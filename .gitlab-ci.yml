@@ -6,13 +6,13 @@ variables:
   GITLAB_HOST: gitlab.socs.uoguelph.ca
   GRADER_PROJECT_ID: "48649"    
   GRADER_REF: "main"             
-  ASSIGNMENT: "A2"
+  ASSIGNMENT: "A3"
                      
   STUDENT_ID: "cdopson"   # ensure your username is correct on this line and the next
-  STUDENT_REPO: "cdopson/A2"  # 
+  STUDENT_REPO: "cdopson/A3"  # 
   STUDENT_BRANCH: "main"
 
-trigger_a2_grader:
+trigger_a3_grader:
   stage: trigger
   image: curlimages/curl:8.10.1
   only:
@@ -22,11 +22,11 @@ trigger_a2_grader:
     - |
       curl --fail -X POST \
         "https://${GITLAB_HOST}/api/v4/projects/${GRADER_PROJECT_ID}/trigger/pipeline" \
-        --data "token=${A2_TRIGGER_TOKEN}" \
+        --data "token=${A3_TRIGGER_TOKEN}" \
         --data "ref=${GRADER_REF}" \
         --data-urlencode "variables[STUDENT_ID]=${STUDENT_ID}" \
         --data-urlencode "variables[STUDENT_REPO]=${STUDENT_REPO}" \
         --data-urlencode "variables[STUDENT_BRANCH]=${STUDENT_BRANCH}" \
         --data-urlencode "variables[ASSIGNMENT]=${ASSIGNMENT}" \
-        --data-urlencode "variables[STUDENT_SHA]=${CI_COMMIT_SHA}"
+        --data-urlencode "variables[STUDENT_SHA]=${CI_COMMIT_SHA}" \
 
