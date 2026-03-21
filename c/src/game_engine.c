@@ -456,7 +456,6 @@ Status game_engine_render_current_room(const GameEngine *eng, char **str_out){
 
     }
 
-
     //Checks if player is null
     if (eng->player == NULL){
 
