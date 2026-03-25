@@ -5,6 +5,11 @@
 #include "game_engine.h"
 #include "player.h"
 
+/* Source-only game_engine accessors (implemented in c/src/game_engine.c). */
+extern Status game_engine_get_player_room(const GameEngine *eng, int *room_out);
+extern Status game_engine_get_player_position(const GameEngine *eng, int *x_out, int *y_out);
+extern Status game_engine_get_player_collected_count(const GameEngine *eng, int *count_out);
+
 static GameEngine *engine = NULL;
 static const char *config_path = "../assets/starter.ini";
 
@@ -101,13 +106,19 @@ END_TEST
 
 START_TEST(test_game_engine_get_player_success){
 
-    const Player *player = game_engine_get_player(engine);
-    
-    ck_assert_ptr_nonnull(player);
+    int room_id = -1;
+    int x = -1;
+    int y = -1;
+    int collected = -1;
 
-    ck_assert_int_ge(player->room_id, 0);
-    ck_assert_int_ge(player->x, 0);
-    ck_assert_int_ge(player->y, 0);
+    ck_assert_int_eq(game_engine_get_player_room(engine, &room_id), OK);
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x, &y), OK);
+    ck_assert_int_eq(game_engine_get_player_collected_count(engine, &collected), OK);
+
+    ck_assert_int_ge(room_id, 0);
+    ck_assert_int_ge(x, 0);
+    ck_assert_int_ge(y, 0);
+    ck_assert_int_ge(collected, 0);
 
 }
 END_TEST
@@ -128,15 +139,17 @@ END_TEST
 
 START_TEST(test_game_engine_move_player_north){
 
-    const Player *player_before = game_engine_get_player(engine);
-    int y_before = player_before->y;
+    int x_before = 0;
+    int y_before = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_before, &y_before), OK);
     
     Status status = game_engine_move_player(engine, DIR_NORTH);
-    
-    const Player *player_after = game_engine_get_player(engine);
+    int x_after = 0;
+    int y_after = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_after, &y_after), OK);
     
     if (status == OK) {
-        ck_assert_int_eq(player_after->y, y_before - 1);
+        ck_assert_int_eq(y_after, y_before - 1);
     }
 }
 END_TEST
@@ -144,15 +157,17 @@ END_TEST
 
 START_TEST(test_game_engine_move_player_south){
 
-    const Player *player_before = game_engine_get_player(engine);
-    int y_before = player_before->y;
+    int x_before = 0;
+    int y_before = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_before, &y_before), OK);
     
     Status status = game_engine_move_player(engine, DIR_SOUTH);
-    
-    const Player *player_after = game_engine_get_player(engine);
+    int x_after = 0;
+    int y_after = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_after, &y_after), OK);
     
     if (status == OK) {
-        ck_assert_int_eq(player_after->y, y_before + 1);
+        ck_assert_int_eq(y_after, y_before + 1);
     }
 }
 END_TEST
@@ -160,15 +175,17 @@ END_TEST
 
 START_TEST(test_game_engine_move_player_east){
 
-    const Player *player_before = game_engine_get_player(engine);
-    int x_before = player_before->x;
+    int x_before = 0;
+    int y_before = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_before, &y_before), OK);
     
     Status status = game_engine_move_player(engine, DIR_EAST);
-    
-    const Player *player_after = game_engine_get_player(engine);
+    int x_after = 0;
+    int y_after = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_after, &y_after), OK);
     
     if (status == OK) {
-        ck_assert_int_eq(player_after->x, x_before + 1);
+        ck_assert_int_eq(x_after, x_before + 1);
     }
 }
 END_TEST
@@ -176,15 +193,17 @@ END_TEST
 
 START_TEST(test_game_engine_move_player_west){
 
-    const Player *player_before = game_engine_get_player(engine);
-    int x_before = player_before->x;
+    int x_before = 0;
+    int y_before = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_before, &y_before), OK);
     
     Status status = game_engine_move_player(engine, DIR_WEST);
-    
-    const Player *player_after = game_engine_get_player(engine);
+    int x_after = 0;
+    int y_after = 0;
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_after, &y_after), OK);
     
     if (status == OK) {
-        ck_assert_int_eq(player_after->x, x_before - 1);
+        ck_assert_int_eq(x_after, x_before - 1);
     }
 }
 END_TEST
@@ -304,10 +323,11 @@ END_TEST
 
 START_TEST(test_game_engine_reset_success){
 
-    const Player *player_before = game_engine_get_player(engine);
-    int initial_room = player_before->room_id;
-    int initial_x = player_before->x;
-    int initial_y = player_before->y;
+    int initial_room = -1;
+    int initial_x = -1;
+    int initial_y = -1;
+    ck_assert_int_eq(game_engine_get_player_room(engine, &initial_room), OK);
+    ck_assert_int_eq(game_engine_get_player_position(engine, &initial_x, &initial_y), OK);
     
     // Move player
     game_engine_move_player(engine, DIR_NORTH);
@@ -317,10 +337,14 @@ START_TEST(test_game_engine_reset_success){
     Status status = game_engine_reset(engine);
     ck_assert_int_eq(status, OK);
     
-    const Player *player_after = game_engine_get_player(engine);
-    ck_assert_int_eq(player_after->room_id, initial_room);
-    ck_assert_int_eq(player_after->x, initial_x);
-    ck_assert_int_eq(player_after->y, initial_y);
+    int room_after = -1;
+    int x_after = -1;
+    int y_after = -1;
+    ck_assert_int_eq(game_engine_get_player_room(engine, &room_after), OK);
+    ck_assert_int_eq(game_engine_get_player_position(engine, &x_after, &y_after), OK);
+    ck_assert_int_eq(room_after, initial_room);
+    ck_assert_int_eq(x_after, initial_x);
+    ck_assert_int_eq(y_after, initial_y);
 }
 END_TEST
 
@@ -379,8 +403,7 @@ START_TEST(test_game_engine_render_room_success){
     game_engine_get_room_count(engine, &count);
     
     if (count > 0) {
-        const Player *player = game_engine_get_player(engine);
-        room_id = player->room_id;
+        ck_assert_int_eq(game_engine_get_player_room(engine, &room_id), OK);
         
         char *str = NULL;
         Status status = game_engine_render_room(engine, room_id, &str);

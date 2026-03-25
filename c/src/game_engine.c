@@ -1,4 +1,5 @@
 #include "game_engine.h"
+#include "game_engine_accessors.h"
 #include "world_loader.h"
 #include "room.h"
 #include "player.h"
@@ -167,6 +168,113 @@ const Player *game_engine_get_player(const GameEngine *eng){
 
     return eng->player;//Returns the player in the engine
 
+}
+
+
+Status game_engine_get_player_room(const GameEngine *eng, int *room_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (room_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (eng->player == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    *room_out = player_get_room(eng->player);
+
+    if (*room_out < 0){
+        return INTERNAL_ERROR;
+    }
+
+    return OK;
+}
+
+
+Status game_engine_get_player_position(const GameEngine *eng, int *x_out, int *y_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (x_out == NULL || y_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (eng->player == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    return player_get_position(eng->player, x_out, y_out);
+}
+
+
+Status game_engine_get_player_collected_count(const GameEngine *eng, int *count_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (count_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (eng->player == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    *count_out = player_get_collected_count(eng->player);
+    return OK;
+}
+
+
+Status game_engine_player_has_collected_treasure(const GameEngine *eng, int treasure_id, bool *has_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (has_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (eng->player == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    if (treasure_id < 0){
+        return INVALID_ARGUMENT;
+    }
+
+    *has_out = player_has_collected_treasure(eng->player, treasure_id);
+    return OK;
+}
+
+
+Status game_engine_get_player_collected_treasures(
+    const GameEngine *eng,
+    const Treasure * const **treasures_out,
+    int *count_out
+){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (treasures_out == NULL || count_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (eng->player == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    *treasures_out = player_get_collected_treasures(eng->player, count_out);
+    return OK;
 }
 
 

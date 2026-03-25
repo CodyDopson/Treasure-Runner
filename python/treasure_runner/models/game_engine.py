@@ -6,7 +6,7 @@ Provides a Pythonic interface to game operations.
 
 import ctypes
 from typing import TYPE_CHECKING
-from ..bindings import lib, Status, Direction
+from ..bindings import lib, Status, Direction, Treasure
 from .exceptions import status_to_exception, GameEngineError, ImpassableError
 from .player import Player
 
@@ -41,12 +41,7 @@ class GameEngine:
         if status != Status.OK:
             raise status_to_exception(status, f"Failed to create game engine with config: {config_path}")
 
-        # Get the player
-        player_ptr = lib.game_engine_get_player(self._eng)
-        if not player_ptr:
-            raise RuntimeError("Failed to initialize player")
-
-        self._player = Player(player_ptr)
+        self._player = Player(lambda: self._eng)
 
     @property
     def player(self) -> Player:
@@ -183,35 +178,137 @@ class GameEngine:
         if status != Status.OK:
             raise status_to_exception(status, "Failed to reset game")
 
-    def run(self, ui: "GameUI", profile_path: str = "") -> int:
+    def run(self, ui_view: "GameUI", profile_path: str = "") -> int:
         """
         Run the main game loop by coordinating model state and the UI.
 
         The engine remains free of curses details and only consumes UI methods.
 
         Args:
-            ui: View object responsible for rendering and collecting input
+            ui_view: View object responsible for rendering and collecting input
             profile_path: Player profile path supplied by launcher
 
         Returns:
             Process-style status code
         """
-        ui.message("Use WASD/arrows to move, q to quit.")
+        total_rooms = self.get_room_count()
+        visited_rooms = {self.get_player_room()}
+        ui_view.message("Use WASD/arrows to move, > for portal, r to reset, q to quit.")
 
         while True:
-            ui.render(self.render_current_room(), self.player, profile_path)
-            key = ui.read_key()
+            try:
+                current_room = self.get_player_room()
+                visited_rooms.add(current_room)
+                ui_view.render(
+                    self,
+                    profile_path,
+                    {
+                        "total_rooms": total_rooms,
+                        "rooms_played": len(visited_rooms),
+                    },
+                )
+            except GameEngineError as exc:
+                ui_view.message(f"Render failed: {exc}")
+                return 1
 
-            if ui.is_quit_key(key):
+            key = ui_view.read_key()
+
+            if ui_view.is_quit_key(key):
                 return 0
 
-            direction = ui.read_direction(key)
+            if ui_view.is_reset_key(key):
+                try:
+                    self.reset()
+                    visited_rooms = {self.get_player_room()}
+                    ui_view.message("Game reset to initial state.")
+                except GameEngineError as exc:
+                    ui_view.message(f"Reset failed: {exc}")
+                continue
+
+            if ui_view.is_portal_key(key):
+                ui_view.message("Stand on and move onto portal tiles to travel between rooms.")
+                continue
+
+            direction = ui_view.read_direction(key)
             if direction is None:
                 continue
 
             try:
+                previous_collected = self.get_player_collected_count()
                 self.move_player(direction)
+                current_collected = self.get_player_collected_count()
+                if current_collected > previous_collected:
+                    ui_view.message("You picked up a treasure")
+                else:
+                    ui_view.message("")
             except ImpassableError:
-                ui.message("That way is blocked.")
+                ui_view.message("That way is blocked.")
             except GameEngineError as exc:
-                ui.message(f"Move failed: {exc}")
+                ui_view.message(f"Move failed: {exc}")
+
+    def get_player_room(self) -> int:
+        """Return the current room ID via the game engine API."""
+        room_id = ctypes.c_int()
+        status = lib.game_engine_get_player_room(self._eng, ctypes.byref(room_id))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get player room")
+        return room_id.value
+
+    def get_player_position(self) -> tuple[int, int]:
+        """Return the player's (x, y) position via the game engine API."""
+        x = ctypes.c_int()
+        y = ctypes.c_int()
+        status = lib.game_engine_get_player_position(self._eng, ctypes.byref(x), ctypes.byref(y))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get player position")
+        return (x.value, y.value)
+
+    def get_player_collected_count(self) -> int:
+        """Return number of collected treasures via the game engine API."""
+        count = ctypes.c_int()
+        status = lib.game_engine_get_player_collected_count(self._eng, ctypes.byref(count))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get collected treasure count")
+        return count.value
+
+    def player_has_collected_treasure(self, treasure_id: int) -> bool:
+        """Check whether a treasure ID has been collected via the game engine API."""
+        collected = ctypes.c_bool()
+        status = lib.game_engine_player_has_collected_treasure(
+            self._eng,
+            treasure_id,
+            ctypes.byref(collected),
+        )
+        if status != Status.OK:
+            raise status_to_exception(status, f"Failed to check collected treasure {treasure_id}")
+        return bool(collected.value)
+
+    def get_player_collected_treasures(self) -> list[dict]:
+        """Return collected treasures as Python dicts via the game engine API."""
+        count = ctypes.c_int()
+        treasures_ptr = ctypes.POINTER(ctypes.POINTER(Treasure))()
+
+        status = lib.game_engine_get_player_collected_treasures(
+            self._eng,
+            ctypes.byref(treasures_ptr),
+            ctypes.byref(count),
+        )
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get collected treasures")
+
+        result = []
+        if treasures_ptr:
+            for i in range(count.value):
+                treasure = treasures_ptr[i].contents
+                result.append({
+                    "id": treasure.id,
+                    "name": treasure.name.decode('utf-8') if treasure.name else None,
+                    "starting_room_id": treasure.starting_room_id,
+                    "initial_x": treasure.initial_x,
+                    "initial_y": treasure.initial_y,
+                    "x": treasure.x,
+                    "y": treasure.y,
+                    "collected": treasure.collected,
+                })
+
+        return result

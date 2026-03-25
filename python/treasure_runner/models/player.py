@@ -5,21 +5,29 @@ Provides a Pythonic interface to player operations.
 """
 
 import ctypes
+from collections.abc import Callable
 from ..bindings import lib, Status, Treasure
-from .exceptions import status_to_exception
+from .exceptions import status_to_exception, GameEngineError
 
 
 class Player:
     """Wrapper for C Player type."""
 
-    def __init__(self, ptr: ctypes.c_void_p) -> None:
+    def __init__(self, engine_ptr_getter: Callable[[], ctypes.c_void_p]) -> None:
         """
         Initialize a Player wrapper.
 
         Args:
-            ptr: Pointer to the C Player object
+            engine_ptr_getter: Callable returning the owning C GameEngine pointer
         """
-        self._ptr = ptr
+        self._engine_ptr_getter = engine_ptr_getter
+
+    def _engine_ptr(self) -> ctypes.c_void_p:
+        """Return a live GameEngine pointer or raise if engine is destroyed."""
+        ptr = self._engine_ptr_getter()
+        if not ptr:
+            raise GameEngineError("Game engine is not available")
+        return ptr
 
     def get_room(self) -> int:
         """
@@ -28,7 +36,11 @@ class Player:
         Returns:
             Room ID
         """
-        return lib.player_get_room(self._ptr)
+        room_id = ctypes.c_int()
+        status = lib.game_engine_get_player_room(self._engine_ptr(), ctypes.byref(room_id))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get player room")
+        return room_id.value
 
     def get_position(self) -> tuple[int, int]:
         """
@@ -39,7 +51,7 @@ class Player:
         """
         x = ctypes.c_int()
         y = ctypes.c_int()
-        status = lib.player_get_position(self._ptr, ctypes.byref(x), ctypes.byref(y))
+        status = lib.game_engine_get_player_position(self._engine_ptr(), ctypes.byref(x), ctypes.byref(y))
 
         if status != Status.OK:
             raise status_to_exception(status, "Failed to get player position")
@@ -53,7 +65,11 @@ class Player:
         Returns:
             Number of collected treasures
         """
-        return lib.player_get_collected_count(self._ptr)
+        count = ctypes.c_int()
+        status = lib.game_engine_get_player_collected_count(self._engine_ptr(), ctypes.byref(count))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get collected treasure count")
+        return count.value
 
     def has_collected_treasure(self, treasure_id: int) -> bool:
         """
@@ -65,7 +81,15 @@ class Player:
         Returns:
             True if collected, False otherwise
         """
-        return lib.player_has_collected_treasure(self._ptr, treasure_id)
+        collected = ctypes.c_bool()
+        status = lib.game_engine_player_has_collected_treasure(
+            self._engine_ptr(),
+            treasure_id,
+            ctypes.byref(collected),
+        )
+        if status != Status.OK:
+            raise status_to_exception(status, f"Failed to check collected treasure {treasure_id}")
+        return bool(collected.value)
 
     def get_collected_treasures(self) -> list[dict]:
         """
@@ -76,7 +100,14 @@ class Player:
             initial_y, x, y, collected
         """
         count = ctypes.c_int()
-        treasures_ptr = lib.player_get_collected_treasures(self._ptr, ctypes.byref(count))
+        treasures_ptr = ctypes.POINTER(ctypes.POINTER(Treasure))()
+        status = lib.game_engine_get_player_collected_treasures(
+            self._engine_ptr(),
+            ctypes.byref(treasures_ptr),
+            ctypes.byref(count),
+        )
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get collected treasures")
 
         result = []
         if treasures_ptr:

@@ -20,9 +20,12 @@ class GameUI:
     # Color pair constants (for readability and consistency)
     COLOR_DEFAULT = 0
     COLOR_ITEM = 3
+    BOARD_TOP = 3
+    FOOTER_LINES = 4
 
     def __init__(self, stdscr) -> None:
         self._stdscr = stdscr
+        self._last_message = "Welcome to Treasure Runner."
 
 
     # ---------- Initialization ----------
@@ -58,38 +61,52 @@ class GameUI:
 
     # ---------- Rendering ----------
 
-    def render(self, room_text: str, player, profile_path: str = "") -> None:
-        """Redraw room and status from current GameEngine state."""
+    def render(self, engine: "GameEngine", profile_path: str = "", stats: dict | None = None) -> None:
+        """Redraw room and status by querying current GameEngine state."""
+        room_text = engine.render_current_room()
         self._clear_screen()
 
         max_y, max_x = self._stdscr.getmaxyx()
         lines = room_text.splitlines()
+        board_width = max((len(line) for line in lines), default=0)
 
-        for y, line in enumerate(lines, start=1):
-            if y >= max_y - 1:
+        self._draw_message_bar(max_x)
+        self._draw_room_header(engine.get_player_room(), max_x)
+
+        board_bottom = max_y - self.FOOTER_LINES - 1
+        for y, line in enumerate(lines, start=self.BOARD_TOP):
+            if y > board_bottom:
                 break
             for x, tile in enumerate(line):
                 if x >= max_x - 1:
                     break
                 self._stdscr.addch(y, x, tile, self._color_for_tile(tile))
 
-        self._draw_status(player, profile_path)
+        self._draw_legend(max_x, board_width)
+        self._draw_status(engine, profile_path, stats)
+        self._draw_title_and_email(max_x)
         self._stdscr.refresh()
 
-    def _draw_status(self, player, profile_path: str = "") -> None:
-        """Show position and control hints at the bottom line."""
+    def _draw_status(self, engine: "GameEngine", profile_path: str = "", stats: dict | None = None) -> None:
+        """Show player progress and controls above the game footer."""
         max_y, max_x = self._stdscr.getmaxyx()
-        x, y = player.get_position()
-        room = player.get_room()
-        collected = player.get_collected_count()
-        profile_name = os.path.basename(profile_path) if profile_path else "-"
-        self._stdscr.move(max_y - 1, 0)
+        x, y = engine.get_player_position()
+        room = engine.get_player_room()
+        collected = engine.get_player_collected_count()
+        details = stats or {}
+        rooms_played = stats.get("rooms_played", 1) if stats else 1
+        rooms_left = max(details.get("total_rooms", 0) - rooms_played, 0)
+        self._stdscr.move(max_y - 3, 0)
         self._stdscr.clrtoeol()
         text = (
-            f"Room: {room} Pos: ({x},{y}) Collected: {collected} "
-            f"Profile: {profile_name} | Move: WASD/arrows | Quit: q"
+            f"Status: Gold={collected} Rooms Played={rooms_played} Rooms Left={rooms_left} "
+            f"Room={room} Pos=({x},{y}) Profile={os.path.basename(profile_path) if profile_path else '-'}"
         )
-        self._stdscr.addstr(max_y - 1, 0, text[:max_x - 1], curses.A_REVERSE)
+        self._stdscr.addstr(max_y - 3, 0, text[:max_x - 1], curses.A_BOLD)
+
+        self._stdscr.move(max_y - 2, 0)
+        self._stdscr.clrtoeol()
+        self._stdscr.addstr(max_y - 2, 0, "Controls: Arrows/WASD move | r reset | q quit"[:max_x - 1])
 
     # ---------- User Input ----------
 
@@ -101,6 +118,16 @@ class GameUI:
     def is_quit_key(key: int) -> bool:
         """Return True when key matches quit commands."""
         return key in (ord('q'), ord('Q'))
+
+    @staticmethod
+    def is_reset_key(key: int) -> bool:
+        """Return True when key matches reset commands."""
+        return key in (ord('r'), ord('R'))
+
+    @staticmethod
+    def is_portal_key(key: int) -> bool:
+        """Return True when key matches portal interaction commands."""
+        return key == ord('>')
 
     def read_direction(self, key: int):
         """Translate a curses key into a Direction or None."""
@@ -125,11 +152,47 @@ class GameUI:
 
     def message(self, msg: str) -> None:
         """Display a transient message at the top of the screen."""
-        max_y, max_x = self._stdscr.getmaxyx()
+        self._last_message = msg
+        _, max_x = self._stdscr.getmaxyx()
+        self._draw_message_bar(max_x)
+        self._stdscr.refresh()
+
+    def _draw_message_bar(self, max_x: int) -> None:
         self._stdscr.move(0, 0)
         self._stdscr.clrtoeol()
-        self._stdscr.addstr(0, 0, msg[:max_x - 1])
-        self._stdscr.refresh()
+        if self._last_message:
+            text = f"Message: {self._last_message}"
+            self._stdscr.addstr(0, 0, text[:max_x - 1], curses.A_BOLD)
+
+    def _draw_room_header(self, room_id: int, max_x: int) -> None:
+        self._stdscr.move(1, 0)
+        self._stdscr.clrtoeol()
+        header = f"Room {room_id}"
+        self._stdscr.addstr(1, 0, header[:max_x - 1], curses.A_UNDERLINE)
+
+    def _draw_legend(self, max_x: int, board_width: int) -> None:
+        legend_x = min(board_width + 2, max_x - 1)
+        legend_lines = [
+            "Elements:",
+            "@ player",
+            "# wall",
+            "$ gold",
+            "x exit",
+        ]
+        for index, text in enumerate(legend_lines):
+            y = self.BOARD_TOP + index
+            if legend_x < max_x - 1:
+                self._stdscr.move(y, legend_x)
+                self._stdscr.clrtoeol()
+                self._stdscr.addstr(y, legend_x, text[: max_x - legend_x - 1])
+
+    def _draw_title_and_email(self, max_x: int) -> None:
+        max_y, _ = self._stdscr.getmaxyx()
+        title_y = max_y - 1
+        self._stdscr.move(title_y, 0)
+        self._stdscr.clrtoeol()
+        title = "Treasure Runner | contact: treasure.runner@example.com"
+        self._stdscr.addstr(title_y, 0, title[:max_x - 1], curses.A_DIM)
 
     # ---------- Internal helpers ----------
 
@@ -149,12 +212,12 @@ class GameUI:
 
 def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
     """Initialize the view and execute the controller loop."""
-    ui = GameUI(stdscr)
-    ui.init_screen()
+    ui_view = GameUI(stdscr)
+    ui_view.init_screen()
 
     engine = GameEngine(config_path)
     try:
-        return engine.run(ui, profile_path)
+        return engine.run(ui_view, profile_path)
     finally:
         engine.destroy()
 

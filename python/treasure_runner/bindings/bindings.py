@@ -184,46 +184,43 @@ lib.game_engine_get_room_ids.restype = Status
 lib.game_engine_reset.argtypes = [GameEngine]
 lib.game_engine_reset.restype = Status
 
+# game_engine_get_player_room(const GameEngine *eng, int *room_out)
+lib.game_engine_get_player_room.argtypes = [
+    GameEngine,
+    ctypes.POINTER(ctypes.c_int)
+]
+lib.game_engine_get_player_room.restype = Status
 
-# ============================================================
-# C Function Signatures - Player
-# ============================================================
-
-# player_get_room(const Player *p) -> int
-lib.player_get_room.argtypes = [Player]
-lib.player_get_room.restype = ctypes.c_int
-
-# player_get_position(const Player *p, int *x_out, int *y_out)
-lib.player_get_position.argtypes = [
-    Player,
+# game_engine_get_player_position(const GameEngine *eng, int *x_out, int *y_out)
+lib.game_engine_get_player_position.argtypes = [
+    GameEngine,
     ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_int)
 ]
-lib.player_get_position.restype = Status
+lib.game_engine_get_player_position.restype = Status
 
-# player_get_collected_count(const Player *p) -> int
-lib.player_get_collected_count.argtypes = [Player]
-lib.player_get_collected_count.restype = ctypes.c_int
-
-# player_has_collected_treasure(const Player *p, int treasure_id) -> bool
-lib.player_has_collected_treasure.argtypes = [Player, ctypes.c_int]
-lib.player_has_collected_treasure.restype = ctypes.c_bool
-
-# player_get_collected_treasures(const Player *p, int *count_out) -> const Treasure * const *
-lib.player_get_collected_treasures.argtypes = [
-    Player,
+# game_engine_get_player_collected_count(const GameEngine *eng, int *count_out)
+lib.game_engine_get_player_collected_count.argtypes = [
+    GameEngine,
     ctypes.POINTER(ctypes.c_int)
 ]
-lib.player_get_collected_treasures.restype = ctypes.POINTER(ctypes.POINTER(Treasure))
+lib.game_engine_get_player_collected_count.restype = Status
 
-# player_reset_to_start(Player *p, int starting_room_id, int start_x, int start_y)
-lib.player_reset_to_start.argtypes = [
-    Player,
+# game_engine_player_has_collected_treasure(const GameEngine *eng, int treasure_id, bool *has_out)
+lib.game_engine_player_has_collected_treasure.argtypes = [
+    GameEngine,
     ctypes.c_int,
-    ctypes.c_int,
-    ctypes.c_int
+    ctypes.POINTER(ctypes.c_bool)
 ]
-lib.player_reset_to_start.restype = Status
+lib.game_engine_player_has_collected_treasure.restype = Status
+
+# game_engine_get_player_collected_treasures(const GameEngine *eng, const Treasure * const **treasures_out, int *count_out)
+lib.game_engine_get_player_collected_treasures.argtypes = [
+    GameEngine,
+    ctypes.POINTER(ctypes.POINTER(ctypes.POINTER(Treasure))),
+    ctypes.POINTER(ctypes.c_int)
+]
+lib.game_engine_get_player_collected_treasures.restype = Status
 
 
 # ============================================================
