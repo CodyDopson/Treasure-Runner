@@ -466,6 +466,38 @@ static RoomTileType room_check_portal(const Room *r, int x, int y, int *out_id) 
     return ROOM_TILE_INVALID;
 }
 
+/* Helper: resolve a switch by required ID/index and report pressed state */
+static bool room_switch_is_pressed(const Room *r, int required_switch_id){
+    if (r == NULL || r->switches == NULL || r->switch_count <= 0){
+        return false;
+    }
+
+    const Switch *sw = NULL;
+
+    if (required_switch_id >= 0 && required_switch_id < r->switch_count){
+        sw = &r->switches[required_switch_id];
+    } else {
+        for (int i = 0; i < r->switch_count; ++i){
+            if (r->switches[i].id == required_switch_id){
+                sw = &r->switches[i];
+                break;
+            }
+        }
+    }
+
+    if (sw == NULL){
+        return false;
+    }
+
+    for (int i = 0; i < r->pushable_count; ++i){
+        if (r->pushables[i].x == sw->x && r->pushables[i].y == sw->y){
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 RoomTileType room_classify_tile(const Room *r,int x,int y,int *out_id){
 
@@ -619,7 +651,20 @@ Status room_render(const Room *r,const Charset *charset,char *buffer,int buffer_
         //finds index of the portal, y is row and x is element
         int idx = my_p->y * r->width + my_p->x;
 
-        buffer[idx] = charset->portal;//renders a portal
+        bool portal_unlocked = true;
+        if (my_p->gated){
+            portal_unlocked = room_switch_is_pressed(r, my_p->required_switch_id);
+        }
+
+        buffer[idx] = portal_unlocked ? 'X' : 'L';
+
+    }
+
+    //Runs through all switches
+    for (int i = 0; i < r->switch_count; i++){
+        Switch *sw = &r->switches[i];
+        int idx = sw->y * r->width + sw->x;
+        buffer[idx] = room_switch_is_pressed(r, sw->id) ? charset->switch_on : charset->switch_off;
 
     }
 

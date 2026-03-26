@@ -5,6 +5,7 @@
 
 typedef struct Graph Graph;
 typedef struct Player Player;
+typedef struct Room Room;
 
 /* ============================================================
  * GameEngine - Main Game Controller
@@ -171,6 +172,46 @@ Status game_engine_get_room_dimensions(const GameEngine *eng,
  *   INTERNAL_ERROR if reset cannot complete (this covers all internal engine state errors)
  */
 Status game_engine_reset(GameEngine *eng);
+
+/*
+ * Undo the player's last move.
+ *
+ * Effects:
+ *   • Player returns to previous position
+ *   • Any treasures collected in the last move become uncollected
+ *   • Any pushables moved in the last move return to their previous positions
+ *   • Player may return to a different room if the last move was through a portal
+ *
+ * Returns:
+ *   OK on success
+ *   INVALID_ARGUMENT if eng is NULL
+ *   INTERNAL_ERROR if undo cannot complete
+ *
+ * Notes:
+ *   • If no move has been made yet, returns INTERNAL_ERROR
+ *   • The undo operation does not preserve undo history itself
+ */
+Status game_engine_undo_last_move(GameEngine *eng);
+
+/*
+ * Reset the current room to its initial state.
+ *
+ * Effects:
+ *   • All treasures in the current room are reset to uncollected and initial positions
+ *   • All pushables in the current room return to their initial positions
+ *   • Player position and other rooms are unaffected
+ *   • Player's treasure count from other rooms is preserved
+ *
+ * Returns:
+ *   OK on success
+ *   INVALID_ARGUMENT if eng is NULL
+ *   INTERNAL_ERROR if reset cannot complete
+ *
+ * Notes:
+ *   • This is a room-only reset, not a full game reset
+ *   • Treasures collected in other rooms remain collected
+ */
+Status game_engine_reset_room(GameEngine *eng);
 
 /* ============================================================
  * Room Rendering

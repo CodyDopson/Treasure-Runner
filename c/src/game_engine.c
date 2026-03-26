@@ -170,7 +170,6 @@ void game_engine_destroy(GameEngine *eng){
 
     }
 
-
     //Destroys player and graph
     player_destroy(eng->player);
     graph_destroy(eng->graph);
@@ -357,10 +356,26 @@ Status game_engine_get_player_collected_treasures(
 
 /* Helper: check if a gated portal's switch is pressed */
 static bool is_switch_pressed(const Room *room, int switch_id){
-    if (switch_id < 0 || switch_id >= room->switch_count){
+    if (room == NULL || room->switches == NULL || room->switch_count <= 0 || switch_id < 0){
         return false;
     }
-    Switch *sw = &room->switches[switch_id];
+
+    const Switch *sw = NULL;
+    if (switch_id < room->switch_count){
+        sw = &room->switches[switch_id];
+    } else {
+        for (int i = 0; i < room->switch_count; ++i){
+            if (room->switches[i].id == switch_id){
+                sw = &room->switches[i];
+                break;
+            }
+        }
+    }
+
+    if (sw == NULL){
+        return false;
+    }
+
     for (int j = 0; j < room->pushable_count; ++j){
         if (room->pushables[j].x == sw->x && room->pushables[j].y == sw->y){
             return true;
@@ -372,7 +387,7 @@ static bool is_switch_pressed(const Room *room, int switch_id){
 
 /* Helper: check if a portal at (x,y) is traversable */
 static bool portal_is_traversable(const Room *room, int x, int y, int target_room_id){
-    if (target_room_id < 0){
+    if (room == NULL || target_room_id < 0){
         return false;
     }
     for (int i = 0; i < room->portal_count; ++i){
@@ -408,11 +423,7 @@ static Status handle_treasure_tile(
         return collect_status;
     }
 
-    Status move_status = player_set_position(eng->player, next_x, next_y);
-    if (move_status != OK){
-        return move_status;
-    }
-
+    /* Treasure collected but player does not move onto the tile */
     return OK;
 }
 
@@ -921,6 +932,8 @@ Status game_engine_get_room_ids(const GameEngine *eng,int **ids_out,int *count_o
     return OK;//returns success
 
 }
+
+
 
 void game_engine_free_string(void *ptr) {
 
