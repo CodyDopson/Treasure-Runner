@@ -4,14 +4,75 @@
 
 #include "game_engine.h"
 #include "player.h"
+#include "room.h"
+#include "graph.h"
 
 /* Source-only game_engine accessors (implemented in c/src/game_engine.c). */
 extern Status game_engine_get_player_room(const GameEngine *eng, int *room_out);
 extern Status game_engine_get_player_position(const GameEngine *eng, int *x_out, int *y_out);
 extern Status game_engine_get_player_collected_count(const GameEngine *eng, int *count_out);
+extern Status game_engine_get_total_treasure_count(const GameEngine *eng, int *count_out);
+extern Status game_engine_is_game_over(const GameEngine *eng, bool *is_over_out);
+extern Status game_engine_is_victory(const GameEngine *eng, bool *is_victory_out);
 
 static GameEngine *engine = NULL;
 static const char *config_path = "../assets/starter.ini";
+
+static bool test_place_player_adjacent_to_treasure(GameEngine *eng, Direction *dir_out){
+    if (eng == NULL || dir_out == NULL || eng->graph == NULL || eng->player == NULL){
+        return false;
+    }
+
+    const void * const *payloads = NULL;
+    int payload_count = 0;
+    if (graph_get_all_payloads(eng->graph, &payloads, &payload_count) != GRAPH_STATUS_OK){
+        return false;
+    }
+
+    for (int i = 0; i < payload_count; ++i){
+        Room *room = (Room *)payloads[i];
+        for (int t = 0; t < room->treasure_count; ++t){
+            Treasure *treasure = &room->treasures[t];
+            if (treasure->collected){
+                continue;
+            }
+
+            const int tx = treasure->x;
+            const int ty = treasure->y;
+
+            if (room_classify_tile(room, tx, ty, NULL) != ROOM_TILE_TREASURE){
+                continue;
+            }
+
+            if (room_classify_tile(room, tx, ty - 1, NULL) == ROOM_TILE_FLOOR){
+                player_move_to_room(eng->player, room->id);
+                player_set_position(eng->player, tx, ty - 1);
+                *dir_out = DIR_SOUTH;
+                return true;
+            }
+            if (room_classify_tile(room, tx, ty + 1, NULL) == ROOM_TILE_FLOOR){
+                player_move_to_room(eng->player, room->id);
+                player_set_position(eng->player, tx, ty + 1);
+                *dir_out = DIR_NORTH;
+                return true;
+            }
+            if (room_classify_tile(room, tx - 1, ty, NULL) == ROOM_TILE_FLOOR){
+                player_move_to_room(eng->player, room->id);
+                player_set_position(eng->player, tx - 1, ty);
+                *dir_out = DIR_EAST;
+                return true;
+            }
+            if (room_classify_tile(room, tx + 1, ty, NULL) == ROOM_TILE_FLOOR){
+                player_move_to_room(eng->player, room->id);
+                player_set_position(eng->player, tx + 1, ty);
+                *dir_out = DIR_WEST;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 
 
@@ -262,6 +323,37 @@ START_TEST(test_game_engine_get_room_count_null_count_out){
 END_TEST
 
 
+START_TEST(test_game_engine_get_total_treasure_count_success){
+
+    int total = -1;
+    Status status = game_engine_get_total_treasure_count(engine, &total);
+    ck_assert_int_eq(status, OK);
+    ck_assert_int_gt(total, 0);
+
+    const void * const *payloads = NULL;
+    int payload_count = 0;
+    ck_assert_int_eq(graph_get_all_payloads(engine->graph, &payloads, &payload_count), GRAPH_STATUS_OK);
+
+    int expected = 0;
+    for (int i = 0; i < payload_count; ++i){
+        const Room *room = (const Room *)payloads[i];
+        expected += room->treasure_count;
+    }
+
+    ck_assert_int_eq(total, expected);
+}
+END_TEST
+
+
+START_TEST(test_game_engine_get_total_treasure_count_nulls){
+
+    int total = 0;
+    ck_assert_int_eq(game_engine_get_total_treasure_count(NULL, &total), INVALID_ARGUMENT);
+    ck_assert_int_eq(game_engine_get_total_treasure_count(engine, NULL), NULL_POINTER);
+}
+END_TEST
+
+
 /* ============================================================
  * Room Dimensions Query Tests
  * ============================================================ */
@@ -354,6 +446,55 @@ START_TEST(test_game_engine_reset_null_engine){
     Status status = game_engine_reset(NULL);
     
     ck_assert_int_eq(status, INVALID_ARGUMENT);
+}
+END_TEST
+
+
+START_TEST(test_game_engine_victory_and_game_over_initially_false){
+
+    bool is_victory = true;
+    bool is_game_over = true;
+
+    ck_assert_int_eq(game_engine_is_victory(engine, &is_victory), OK);
+    ck_assert_int_eq(game_engine_is_game_over(engine, &is_game_over), OK);
+    ck_assert(!is_victory);
+    ck_assert(!is_game_over);
+}
+END_TEST
+
+
+START_TEST(test_game_engine_victory_after_final_treasure_collected){
+
+    Direction collect_dir = DIR_NORTH;
+    bool placed = test_place_player_adjacent_to_treasure(engine, &collect_dir);
+    ck_assert(placed);
+
+    int collected_before = 0;
+    ck_assert_int_eq(game_engine_get_player_collected_count(engine, &collected_before), OK);
+
+    engine->total_treasure_count = collected_before + 1;
+    engine->is_game_over = false;
+    engine->is_victory = false;
+
+    Status move_status = game_engine_move_player(engine, collect_dir);
+    ck_assert_int_eq(move_status, OK);
+
+    int collected_after = 0;
+    ck_assert_int_eq(game_engine_get_player_collected_count(engine, &collected_after), OK);
+    ck_assert_int_eq(collected_after, collected_before + 1);
+
+    bool is_victory = false;
+    bool is_game_over = false;
+    ck_assert_int_eq(game_engine_is_victory(engine, &is_victory), OK);
+    ck_assert_int_eq(game_engine_is_game_over(engine, &is_game_over), OK);
+    ck_assert(is_victory);
+    ck_assert(is_game_over);
+
+    ck_assert_int_eq(game_engine_reset(engine), OK);
+    ck_assert_int_eq(game_engine_is_victory(engine, &is_victory), OK);
+    ck_assert_int_eq(game_engine_is_game_over(engine, &is_game_over), OK);
+    ck_assert(!is_victory);
+    ck_assert(!is_game_over);
 }
 END_TEST
 
@@ -563,6 +704,8 @@ Suite *game_engine_suite(void){
     tcase_add_test(tc_queries, test_game_engine_get_room_count_success);
     tcase_add_test(tc_queries, test_game_engine_get_room_count_null_engine);
     tcase_add_test(tc_queries, test_game_engine_get_room_count_null_count_out);
+    tcase_add_test(tc_queries, test_game_engine_get_total_treasure_count_success);
+    tcase_add_test(tc_queries, test_game_engine_get_total_treasure_count_nulls);
 
     tcase_add_test(tc_queries, test_game_engine_get_room_dimensions_success);
     tcase_add_test(tc_queries, test_game_engine_get_room_dimensions_null_engine);
@@ -584,6 +727,8 @@ Suite *game_engine_suite(void){
 
     tcase_add_test(tc_reset, test_game_engine_reset_success);
     tcase_add_test(tc_reset, test_game_engine_reset_null_engine);
+    tcase_add_test(tc_reset, test_game_engine_victory_and_game_over_initially_false);
+    tcase_add_test(tc_reset, test_game_engine_victory_after_final_treasure_collected);
 
     suite_add_tcase(s, tc_reset);
     

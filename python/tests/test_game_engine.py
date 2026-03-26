@@ -54,6 +54,24 @@ class TestGameEngineQueries(unittest.TestCase):
         self.assertIsInstance(ids, list)
         self.assertEqual(len(ids), self.eng.get_room_count())
 
+    def test_get_total_treasure_count(self):
+        total = self.eng.get_total_treasure_count()
+        self.assertGreater(total, 0)
+
+
+class TestCompletionState(unittest.TestCase):
+    """Tests for game-over and victory state APIs."""
+
+    def setUp(self):
+        self.eng = GameEngine(CONFIG_PATH)
+
+    def tearDown(self):
+        self.eng.destroy()
+
+    def test_initial_state_not_complete(self):
+        self.assertFalse(self.eng.is_game_over())
+        self.assertFalse(self.eng.is_victory())
+
 
 class TestPlayerBasics(unittest.TestCase):
     """Tests for Player wrapper basics."""

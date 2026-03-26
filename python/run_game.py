@@ -48,12 +48,21 @@ def _launch_game_ui(config_path: str, profile_path: str) -> int:
     )
 
 
+def _resolve_profile_path(profile_arg: str) -> str:
+    """Store all player profiles in the top-level assets directory."""
+    here = Path(__file__).resolve().parent
+    assets_dir = (here.parent / "assets").resolve()
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    profile_name = Path(profile_arg).name or "player_profile.json"
+    return str((assets_dir / profile_name).resolve())
+
+
 def main() -> int:
     _adjust_sys_path()
     args = parse_args()
 
     config_path = os.path.abspath(args.config)
-    profile_path = os.path.abspath(args.profile)
+    profile_path = _resolve_profile_path(args.profile)
 
     try:
         return _launch_game_ui(config_path, profile_path)

@@ -206,6 +206,27 @@ lib.game_engine_get_player_collected_count.argtypes = [
 ]
 lib.game_engine_get_player_collected_count.restype = Status
 
+# game_engine_get_total_treasure_count(const GameEngine *eng, int *count_out)
+lib.game_engine_get_total_treasure_count.argtypes = [
+    GameEngine,
+    ctypes.POINTER(ctypes.c_int)
+]
+lib.game_engine_get_total_treasure_count.restype = Status
+
+# game_engine_is_game_over(const GameEngine *eng, bool *is_over_out)
+lib.game_engine_is_game_over.argtypes = [
+    GameEngine,
+    ctypes.POINTER(ctypes.c_bool)
+]
+lib.game_engine_is_game_over.restype = Status
+
+# game_engine_is_victory(const GameEngine *eng, bool *is_victory_out)
+lib.game_engine_is_victory.argtypes = [
+    GameEngine,
+    ctypes.POINTER(ctypes.c_bool)
+]
+lib.game_engine_is_victory.restype = Status
+
 # game_engine_player_has_collected_treasure(const GameEngine *eng, int treasure_id, bool *has_out)
 lib.game_engine_player_has_collected_treasure.argtypes = [
     GameEngine,

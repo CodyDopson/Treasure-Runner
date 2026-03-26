@@ -29,6 +29,36 @@ static Room *get_room_by_id(Graph *g, int room_id){
 
 }
 
+/* Helper: compute total treasure count across every loaded room */
+static int compute_total_treasure_count(const Graph *graph){
+    const void * const *payloads = NULL;
+    int payload_count = 0;
+    GraphStatus gs = graph_get_all_payloads(graph, &payloads, &payload_count);
+    if (gs != GRAPH_STATUS_OK){
+        return 0;
+    }
+
+    int total = 0;
+    for (int i = 0; i < payload_count; ++i){
+        const Room *room = (const Room *)payloads[i];
+        total += room->treasure_count;
+    }
+    return total;
+}
+
+/* Helper: refresh game-over/victory flags based on collected progress */
+static void refresh_completion_state(GameEngine *eng){
+    if (eng == NULL || eng->player == NULL){
+        return;
+    }
+
+    int collected_count = player_get_collected_count(eng->player);
+    if (eng->total_treasure_count > 0 && collected_count >= eng->total_treasure_count){
+        eng->is_victory = true;
+        eng->is_game_over = true;
+    }
+}
+
 
 
 
@@ -78,6 +108,9 @@ Status game_engine_create(const char *config_file_path, GameEngine **engine_out)
 
     //Sets the room count of the engine to the number of rooms loaded
     eng->room_count = num_rooms;
+    eng->total_treasure_count = compute_total_treasure_count(eng->graph);
+    eng->is_game_over = false;
+    eng->is_victory = false;
 
 
     //Variables for getting starting position from first room
@@ -232,6 +265,51 @@ Status game_engine_get_player_collected_count(const GameEngine *eng, int *count_
 }
 
 
+Status game_engine_get_total_treasure_count(const GameEngine *eng, int *count_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (count_out == NULL){
+        return NULL_POINTER;
+    }
+
+    *count_out = eng->total_treasure_count;
+    return OK;
+}
+
+
+Status game_engine_is_game_over(const GameEngine *eng, bool *is_over_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (is_over_out == NULL){
+        return NULL_POINTER;
+    }
+
+    *is_over_out = eng->is_game_over;
+    return OK;
+}
+
+
+Status game_engine_is_victory(const GameEngine *eng, bool *is_victory_out){
+
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (is_victory_out == NULL){
+        return NULL_POINTER;
+    }
+
+    *is_victory_out = eng->is_victory;
+    return OK;
+}
+
+
 Status game_engine_player_has_collected_treasure(const GameEngine *eng, int treasure_id, bool *has_out){
 
     if (eng == NULL){
@@ -324,6 +402,13 @@ static Status handle_treasure_tile(GameEngine *eng, Room *room, int tile_id, int
     if (collect_status != OK){
         return collect_status;
     }
+
+    Status move_status = player_set_position(eng->player, next_x, next_y);
+    if (move_status != OK){
+        return move_status;
+    }
+
+    refresh_completion_state(eng);
     return OK;
 }
 
@@ -404,18 +489,29 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
     int tile_id = -1;
     RoomTileType tile_type = room_classify_tile(current_room, next_x, next_y, &tile_id);
 
+    Status move_status = ROOM_IMPASSABLE;
     switch (tile_type){
         case ROOM_TILE_TREASURE:
-            return handle_treasure_tile(eng, current_room, tile_id, next_x, next_y);
+            move_status = handle_treasure_tile(eng, current_room, tile_id, next_x, next_y);
+            break;
         case ROOM_TILE_PUSHABLE:
-            return handle_pushable_tile(eng, current_room, tile_id, dir, next_x, next_y);
+            move_status = handle_pushable_tile(eng, current_room, tile_id, dir, next_x, next_y);
+            break;
         case ROOM_TILE_PORTAL:
-            return handle_portal_tile(eng, current_room, tile_id, next_x, next_y);
+            move_status = handle_portal_tile(eng, current_room, tile_id, next_x, next_y);
+            break;
         case ROOM_TILE_FLOOR:
-            return player_set_position(eng->player, next_x, next_y);
+            move_status = player_set_position(eng->player, next_x, next_y);
+            break;
         default:
             return ROOM_IMPASSABLE;
     }
+
+    if (move_status == OK){
+        refresh_completion_state(eng);
+    }
+
+    return move_status;
 
 }
 
@@ -545,6 +641,9 @@ Status game_engine_reset(GameEngine *eng){
             room->pushables[j].y = room->pushables[j].initial_y;
         }
     }
+
+    eng->is_game_over = false;
+    eng->is_victory = false;
 
     return OK;
 

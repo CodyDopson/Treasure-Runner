@@ -42,6 +42,12 @@ class GameEngine:
             raise status_to_exception(status, f"Failed to create game engine with config: {config_path}")
 
         self._player = Player(lambda: self._eng)
+        self._last_run_stats = {
+            "rooms_completed": 0,
+            "treasure_collected": 0,
+            "total_treasures": 0,
+            "steps_taken": 0,
+        }
 
     @property
     def player(self) -> Player:
@@ -192,15 +198,43 @@ class GameEngine:
             Process-style status code
         """
         total_rooms = self.get_room_count()
+        total_treasures = self.get_total_treasure_count()
         visited_rooms = {self.get_player_room()}
-        ui_view.message("Use WASD/arrows to move, > for portal, r to reset, q to quit.")
+        self._last_run_stats = {
+            "rooms_completed": len(visited_rooms),
+            "treasure_collected": self.get_player_collected_count(),
+            "total_treasures": total_treasures,
+            "steps_taken": 0,
+        }
+        ui_view.message("Use WASD/arrows to move, r to reset, q to quit.")
 
         while True:
-            if not self._render_loop_frame(ui_view, profile_path, total_rooms, visited_rooms):
+            if not self._render_loop_frame(ui_view, profile_path, total_rooms, total_treasures, visited_rooms):
                 return 1
 
+            if self.is_victory():
+                steps_taken = int(self._last_run_stats.get("steps_taken", 0))
+                rooms_visited = len(visited_rooms)
+                profile_name = profile_path.rsplit("/", 1)[-1] if profile_path else "-"
+                ui_view.message(
+                    "Victory! "
+                    f"Profile={profile_name} | "
+                    f"Treasures={self.get_player_collected_count()}/{total_treasures} | "
+                    f"Steps={steps_taken} | Rooms Visited={rooms_visited}"
+                )
+                ui_view.render(
+                    self,
+                    profile_path,
+                    {
+                        "total_rooms": total_rooms,
+                        "rooms_played": rooms_visited,
+                        "total_treasures": total_treasures,
+                    },
+                )
+                return 0
+
             key = ui_view.read_key()
-            result = self._handle_loop_input(ui_view, key, visited_rooms)
+            result = self._handle_loop_input(ui_view, key, visited_rooms, total_treasures)
             if result is not None:
                 return result
 
@@ -209,16 +243,21 @@ class GameEngine:
         ui_view: "GameUI",
         profile_path: str,
         total_rooms: int,
+        total_treasures: int,
         visited_rooms: set[int],
     ) -> bool:
         try:
             visited_rooms.add(self.get_player_room())
+            self._last_run_stats["rooms_completed"] = len(visited_rooms)
+            self._last_run_stats["treasure_collected"] = self.get_player_collected_count()
+            self._last_run_stats["total_treasures"] = total_treasures
             ui_view.render(
                 self,
                 profile_path,
                 {
                     "total_rooms": total_rooms,
                     "rooms_played": len(visited_rooms),
+                    "total_treasures": total_treasures,
                 },
             )
         except GameEngineError as exc:
@@ -227,7 +266,22 @@ class GameEngine:
 
         return True
 
-    def _handle_loop_input(self, ui_view: "GameUI", key: int, visited_rooms: set[int]) -> int | None:
+    def get_last_run_stats(self) -> dict:
+        """Return run statistics captured during the most recent loop."""
+        return {
+            "rooms_completed": int(self._last_run_stats.get("rooms_completed", 0)),
+            "treasure_collected": int(self._last_run_stats.get("treasure_collected", 0)),
+            "total_treasures": int(self._last_run_stats.get("total_treasures", 0)),
+            "steps_taken": int(self._last_run_stats.get("steps_taken", 0)),
+        }
+
+    def _handle_loop_input(
+        self,
+        ui_view: "GameUI",
+        key: int,
+        visited_rooms: set[int],
+        total_treasures: int,
+    ) -> int | None:
         if ui_view.is_quit_key(key):
             return 0
 
@@ -243,7 +297,7 @@ class GameEngine:
         if direction is None:
             return None
 
-        self._handle_move(ui_view, direction)
+        self._handle_move(ui_view, direction, total_treasures)
         return None
 
     def _handle_reset(self, ui_view: "GameUI", visited_rooms: set[int]) -> None:
@@ -251,19 +305,24 @@ class GameEngine:
             self.reset()
             visited_rooms.clear()
             visited_rooms.add(self.get_player_room())
+            self._last_run_stats["steps_taken"] = 0
             ui_view.message("Game reset to initial state.")
         except GameEngineError as exc:
             ui_view.message(f"Reset failed: {exc}")
 
-    def _handle_move(self, ui_view: "GameUI", direction: Direction) -> None:
+    def _handle_move(self, ui_view: "GameUI", direction: Direction, total_treasures: int) -> None:
         try:
             previous_collected = self.get_player_collected_count()
             self.move_player(direction)
+            self._last_run_stats["steps_taken"] = int(self._last_run_stats.get("steps_taken", 0)) + 1
             current_collected = self.get_player_collected_count()
             if current_collected > previous_collected:
-                ui_view.message("You picked up a treasure")
+                if current_collected >= total_treasures and total_treasures > 0:
+                    ui_view.message(f"Treasure progress: {current_collected}/{total_treasures} treasures collected")
+                else:
+                    ui_view.message(f"You picked up a treasure ({current_collected}/{total_treasures})")
             else:
-                ui_view.message("")
+                ui_view.message(f"Treasure progress: {current_collected}/{total_treasures} treasures collected")
         except ImpassableError:
             ui_view.message("That way is blocked.")
         except GameEngineError as exc:
@@ -293,6 +352,30 @@ class GameEngine:
         if status != Status.OK:
             raise status_to_exception(status, "Failed to get collected treasure count")
         return count.value
+
+    def get_total_treasure_count(self) -> int:
+        """Return total number of world treasures via the game engine API."""
+        count = ctypes.c_int()
+        status = lib.game_engine_get_total_treasure_count(self._eng, ctypes.byref(count))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get total treasure count")
+        return count.value
+
+    def is_game_over(self) -> bool:
+        """Return whether the game has ended in a terminal state."""
+        value = ctypes.c_bool()
+        status = lib.game_engine_is_game_over(self._eng, ctypes.byref(value))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get game-over state")
+        return bool(value.value)
+
+    def is_victory(self) -> bool:
+        """Return whether all treasures have been collected."""
+        value = ctypes.c_bool()
+        status = lib.game_engine_is_victory(self._eng, ctypes.byref(value))
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to get victory state")
+        return bool(value.value)
 
     def player_has_collected_treasure(self, treasure_id: int) -> bool:
         """Check whether a treasure ID has been collected via the game engine API."""

@@ -39,6 +39,9 @@ typedef struct GameEngine {
     int initial_player_y;
 
     int room_count;             /* Cached number of rooms */
+    int total_treasure_count;   /* Cached world treasure total */
+    bool is_game_over;          /* True once a terminal state is reached */
+    bool is_victory;            /* True when all treasures are collected */
 } GameEngine;
 
 /* ============================================================
@@ -136,6 +139,39 @@ Status game_engine_move_player(GameEngine *eng, Direction dir);
  */
 Status game_engine_get_room_count(const GameEngine *eng,
                                   int *count_out);
+
+/*
+ * Retrieve the total number of treasures in the loaded world.
+ *
+ * Returns:
+ *   OK on success (count_out is set)
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if count_out is NULL
+ */
+Status game_engine_get_total_treasure_count(const GameEngine *eng,
+                                            int *count_out);
+
+/*
+ * Query whether the game is currently in a game-over state.
+ *
+ * Returns:
+ *   OK on success (is_over_out is set)
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if is_over_out is NULL
+ */
+Status game_engine_is_game_over(const GameEngine *eng,
+                                bool *is_over_out);
+
+/*
+ * Query whether the game has ended in victory.
+ *
+ * Returns:
+ *   OK on success (is_victory_out is set)
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if is_victory_out is NULL
+ */
+Status game_engine_is_victory(const GameEngine *eng,
+                              bool *is_victory_out);
 
 /*
  * Retrieve the width and height of the player's current room.

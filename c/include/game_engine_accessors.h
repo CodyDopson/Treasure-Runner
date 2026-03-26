@@ -72,6 +72,49 @@ Status game_engine_get_player_collected_count(const GameEngine *eng,
                                               int *count_out);
 
 /*
+ * game_engine_get_total_treasure_count
+ * ------------------------------------
+ * Get the total number of treasures in the world.
+ *
+ * Parameters:
+ *   eng:       The game engine
+ *   count_out: Output pointer for total treasure count
+ *
+ * Returns:
+ *   OK on success
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if count_out is NULL
+ */
+Status game_engine_get_total_treasure_count(const GameEngine *eng,
+                                            int *count_out);
+
+/*
+ * game_engine_is_game_over
+ * ------------------------
+ * Check whether the game has reached a terminal state.
+ *
+ * Returns:
+ *   OK on success (is_over_out is set)
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if is_over_out is NULL
+ */
+Status game_engine_is_game_over(const GameEngine *eng,
+                                bool *is_over_out);
+
+/*
+ * game_engine_is_victory
+ * ----------------------
+ * Check whether the game is in a victory state.
+ *
+ * Returns:
+ *   OK on success (is_victory_out is set)
+ *   INVALID_ARGUMENT if eng is NULL
+ *   NULL_POINTER if is_victory_out is NULL
+ */
+Status game_engine_is_victory(const GameEngine *eng,
+                              bool *is_victory_out);
+
+/*
  * game_engine_player_has_collected_treasure
  * -------------------------------------------
  * Check if the player has collected a specific treasure.
