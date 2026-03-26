@@ -196,55 +196,78 @@ class GameEngine:
         ui_view.message("Use WASD/arrows to move, > for portal, r to reset, q to quit.")
 
         while True:
-            try:
-                current_room = self.get_player_room()
-                visited_rooms.add(current_room)
-                ui_view.render(
-                    self,
-                    profile_path,
-                    {
-                        "total_rooms": total_rooms,
-                        "rooms_played": len(visited_rooms),
-                    },
-                )
-            except GameEngineError as exc:
-                ui_view.message(f"Render failed: {exc}")
+            if not self._render_loop_frame(ui_view, profile_path, total_rooms, visited_rooms):
                 return 1
 
             key = ui_view.read_key()
+            result = self._handle_loop_input(ui_view, key, visited_rooms)
+            if result is not None:
+                return result
 
-            if ui_view.is_quit_key(key):
-                return 0
+    def _render_loop_frame(
+        self,
+        ui_view: "GameUI",
+        profile_path: str,
+        total_rooms: int,
+        visited_rooms: set[int],
+    ) -> bool:
+        try:
+            visited_rooms.add(self.get_player_room())
+            ui_view.render(
+                self,
+                profile_path,
+                {
+                    "total_rooms": total_rooms,
+                    "rooms_played": len(visited_rooms),
+                },
+            )
+        except GameEngineError as exc:
+            ui_view.message(f"Render failed: {exc}")
+            return False
 
-            if ui_view.is_reset_key(key):
-                try:
-                    self.reset()
-                    visited_rooms = {self.get_player_room()}
-                    ui_view.message("Game reset to initial state.")
-                except GameEngineError as exc:
-                    ui_view.message(f"Reset failed: {exc}")
-                continue
+        return True
 
-            if ui_view.is_portal_key(key):
-                ui_view.message("Stand on and move onto portal tiles to travel between rooms.")
-                continue
+    def _handle_loop_input(self, ui_view: "GameUI", key: int, visited_rooms: set[int]) -> int | None:
+        if ui_view.is_quit_key(key):
+            return 0
 
-            direction = ui_view.read_direction(key)
-            if direction is None:
-                continue
+        if ui_view.is_reset_key(key):
+            self._handle_reset(ui_view, visited_rooms)
+            return None
 
-            try:
-                previous_collected = self.get_player_collected_count()
-                self.move_player(direction)
-                current_collected = self.get_player_collected_count()
-                if current_collected > previous_collected:
-                    ui_view.message("You picked up a treasure")
-                else:
-                    ui_view.message("")
-            except ImpassableError:
-                ui_view.message("That way is blocked.")
-            except GameEngineError as exc:
-                ui_view.message(f"Move failed: {exc}")
+        if ui_view.is_portal_key(key):
+            ui_view.message("Stand on and move onto portal tiles to travel between rooms.")
+            return None
+
+        direction = ui_view.read_direction(key)
+        if direction is None:
+            return None
+
+        self._handle_move(ui_view, direction)
+        return None
+
+    def _handle_reset(self, ui_view: "GameUI", visited_rooms: set[int]) -> None:
+        try:
+            self.reset()
+            visited_rooms.clear()
+            visited_rooms.add(self.get_player_room())
+            ui_view.message("Game reset to initial state.")
+        except GameEngineError as exc:
+            ui_view.message(f"Reset failed: {exc}")
+
+    def _handle_move(self, ui_view: "GameUI", direction: Direction) -> None:
+        try:
+            previous_collected = self.get_player_collected_count()
+            self.move_player(direction)
+            current_collected = self.get_player_collected_count()
+            if current_collected > previous_collected:
+                ui_view.message("You picked up a treasure")
+            else:
+                ui_view.message("")
+        except ImpassableError:
+            ui_view.message("That way is blocked.")
+        except GameEngineError as exc:
+            ui_view.message(f"Move failed: {exc}")
 
     def get_player_room(self) -> int:
         """Return the current room ID via the game engine API."""

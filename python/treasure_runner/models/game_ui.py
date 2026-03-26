@@ -73,14 +73,7 @@ class GameUI:
         self._draw_message_bar(max_x)
         self._draw_room_header(engine.get_player_room(), max_x)
 
-        board_bottom = max_y - self.FOOTER_LINES - 1
-        for y, line in enumerate(lines, start=self.BOARD_TOP):
-            if y > board_bottom:
-                break
-            for x, tile in enumerate(line):
-                if x >= max_x - 1:
-                    break
-                self._stdscr.addch(y, x, tile, self._color_for_tile(tile))
+        self._draw_board(lines, max_x, max_y)
 
         self._draw_legend(max_x, board_width)
         self._draw_status(engine, profile_path, stats)
@@ -90,23 +83,36 @@ class GameUI:
     def _draw_status(self, engine: "GameEngine", profile_path: str = "", stats: dict | None = None) -> None:
         """Show player progress and controls above the game footer."""
         max_y, max_x = self._stdscr.getmaxyx()
-        x, y = engine.get_player_position()
-        room = engine.get_player_room()
-        collected = engine.get_player_collected_count()
-        details = stats or {}
-        rooms_played = stats.get("rooms_played", 1) if stats else 1
-        rooms_left = max(details.get("total_rooms", 0) - rooms_played, 0)
         self._stdscr.move(max_y - 3, 0)
         self._stdscr.clrtoeol()
-        text = (
-            f"Status: Gold={collected} Rooms Played={rooms_played} Rooms Left={rooms_left} "
-            f"Room={room} Pos=({x},{y}) Profile={os.path.basename(profile_path) if profile_path else '-'}"
-        )
-        self._stdscr.addstr(max_y - 3, 0, text[:max_x - 1], curses.A_BOLD)
+        status_text = self._status_text(engine, profile_path, stats)
+        self._stdscr.addstr(max_y - 3, 0, status_text[:max_x - 1], curses.A_BOLD)
 
         self._stdscr.move(max_y - 2, 0)
         self._stdscr.clrtoeol()
         self._stdscr.addstr(max_y - 2, 0, "Controls: Arrows/WASD move | r reset | q quit"[:max_x - 1])
+
+    def _draw_board(self, lines: list[str], max_x: int, max_y: int) -> None:
+        board_bottom = max_y - self.FOOTER_LINES - 1
+        for y, line in enumerate(lines, start=self.BOARD_TOP):
+            if y > board_bottom:
+                break
+            for x, tile in enumerate(line):
+                if x >= max_x - 1:
+                    break
+                self._stdscr.addch(y, x, tile, self._color_for_tile(tile))
+
+    def _status_text(self, engine: "GameEngine", profile_path: str, stats: dict | None) -> str:
+        details = stats or {}
+        rooms_played = details.get("rooms_played", 1)
+        rooms_left = max(details.get("total_rooms", 0) - rooms_played, 0)
+        profile_name = os.path.basename(profile_path) if profile_path else "-"
+        position = engine.get_player_position()
+        return (
+            f"Status: Gold={engine.get_player_collected_count()} Rooms Played={rooms_played} "
+            f"Rooms Left={rooms_left} Room={engine.get_player_room()} Pos=({position[0]},{position[1]}) "
+            f"Profile={profile_name}"
+        )
 
     # ---------- User Input ----------
 
@@ -239,4 +245,5 @@ def main(config_path: str, profile_path: str) -> int:
 def launch(config_path: str, profile_path: str) -> int:
     """Alias entry point for launchers that expect launch()."""
     return run_game(config_path, profile_path)
+
 
