@@ -117,17 +117,13 @@ class GameUI:
 
     def _status_text(self, engine: "GameEngine", profile_path: str, stats: dict | None) -> str:
         details = stats or {}
-        rooms_played = int(details.get("rooms_played", 1))
-        total_rooms = int(details.get("total_rooms", 0))
-        rooms_left = max(total_rooms - rooms_played, 0)
-        total_treasures = int(details.get("total_treasures", engine.get_total_treasure_count()))
-        collected_treasures = engine.get_player_collected_count()
+        room_progress = self._room_progress_text(details)
+        treasure_progress = self._treasure_progress_text(engine, details)
+        player_state = self._player_state(engine)
         profile_name = os.path.basename(profile_path) if profile_path else "-"
-        player_room = engine.get_player_room()
-        player_x, player_y = engine.get_player_position()
         return (
-            f"Status: Treasures={collected_treasures}/{total_treasures} Rooms Played={rooms_played} "
-            f"Rooms Left={rooms_left} Room={player_room} Pos=({player_x},{player_y}) "
+            f"Status: {treasure_progress} {room_progress} "
+            f"Room={player_state['room']} Pos={player_state['position']} "
             f"Profile={profile_name}"
         )
 
@@ -317,20 +313,48 @@ class GameUI:
             footer,
         ]
 
+    def _room_progress_text(self, details: dict) -> str:
+        """Build rooms progress display text."""
+        rooms_played = int(details.get("rooms_played", 1))
+        total_rooms = int(details.get("total_rooms", 0))
+        rooms_left = max(total_rooms - rooms_played, 0)
+        return f"Rooms Played={rooms_played} Rooms Left={rooms_left}"
+
+    def _treasure_progress_text(self, engine: "GameEngine", details: dict) -> str:
+        """Build treasure progress display text."""
+        total_treasures = int(details.get("total_treasures", engine.get_total_treasure_count()))
+        collected_treasures = engine.get_player_collected_count()
+        return f"Treasures={collected_treasures}/{total_treasures}"
+
+    def _player_state(self, engine: "GameEngine") -> dict:
+        """Return current player room and position in render-friendly format."""
+        return {
+            "room": engine.get_player_room(),
+            "position": engine.get_player_position(),
+        }
+
 
 def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
     """Initialize the view and execute the controller loop."""
     ui_view = GameUI(stdscr)
     ui_view.init_screen()
+    profile = _load_profile_for_ui(ui_view, profile_path)
+    return _run_game_session(ui_view, config_path, profile_path, profile)
+
+
+def _load_profile_for_ui(ui_view: "GameUI", profile_path: str) -> dict:
+    """Load player profile and show pre-run summary."""
     profile, _ = load_or_create_profile(profile_path, ui_view.prompt_player_name)
     ui_view.show_profile_summary("Player Profile", profile, "Press any key to start game")
+    return profile
 
+
+def _run_game_session(ui_view: "GameUI", config_path: str, profile_path: str, profile: dict) -> int:
+    """Run game loop and persist profile updates regardless of outcome."""
     engine: GameEngine | None = None
-    exit_code = 1
     try:
         engine = GameEngine(config_path)
-        exit_code = engine.run(ui_view, profile_path)
-        return exit_code
+        return int(engine.run(ui_view, profile_path))
     except TerminalTooSmallError as exc:
         ui_view.message(str(exc))
         ui_view.read_key()
@@ -339,10 +363,15 @@ def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
         ui_view.message(f"Error: {exc}")
         return 1
     finally:
-        run_treasure_collected, run_rooms_completed = _finalize_engine(engine)
-        updated_profile = update_profile_after_run(profile, run_treasure_collected, run_rooms_completed)
-        save_profile(profile_path, updated_profile)
-        ui_view.show_profile_summary("Session Summary", updated_profile, "Press any key to exit")
+        _persist_profile_summary(ui_view, profile_path, profile, engine)
+
+
+def _persist_profile_summary(ui_view: "GameUI", profile_path: str, profile: dict, engine: GameEngine | None) -> None:
+    """Update and display end-of-session profile summary."""
+    run_treasure_collected, run_rooms_completed = _finalize_engine(engine)
+    updated_profile = update_profile_after_run(profile, run_treasure_collected, run_rooms_completed)
+    save_profile(profile_path, updated_profile)
+    ui_view.show_profile_summary("Session Summary", updated_profile, "Press any key to exit")
 
 
 def _finalize_engine(engine: GameEngine | None) -> tuple[int, int]:

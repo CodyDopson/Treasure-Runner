@@ -29,62 +29,6 @@ static Room *get_room_by_id(Graph *g, int room_id){
 
 }
 
-/* Accessor-side state registry for per-engine completion metadata. */
-static GameEngineAccessorState **accessor_state_head(void){
-    static GameEngineAccessorState *head = NULL;
-    return &head;
-}
-
-/* Helper: find accessor state node for an engine */
-static GameEngineAccessorState *find_accessor_state(const GameEngine *eng){
-    GameEngineAccessorState *node = *accessor_state_head();
-    while (node != NULL){
-        if (node->engine == eng){
-            return node;
-        }
-        node = node->next;
-    }
-    return NULL;
-}
-
-/* Helper: create and register accessor state */
-static Status register_accessor_state(GameEngine *eng, int total_treasures){
-    GameEngineAccessorState **head = accessor_state_head();
-    GameEngineAccessorState *node = malloc(sizeof(GameEngineAccessorState));
-    if (node == NULL){
-        return NO_MEMORY;
-    }
-
-    node->engine = eng;
-    node->total_treasure_count = total_treasures;
-    node->is_game_over = false;
-    node->is_victory = false;
-    node->next = *head;
-    *head = node;
-    return OK;
-}
-
-/* Helper: remove accessor state node for an engine */
-static void unregister_accessor_state(GameEngine *eng){
-    GameEngineAccessorState **head = accessor_state_head();
-    GameEngineAccessorState *prev = NULL;
-    GameEngineAccessorState *node = *head;
-
-    while (node != NULL){
-        if (node->engine == eng){
-            if (prev == NULL){
-                *head = node->next;
-            } else {
-                prev->next = node->next;
-            }
-            free(node);
-            return;
-        }
-        prev = node;
-        node = node->next;
-    }
-}
-
 /* Helper: compute total treasure count across every loaded room */
 static int compute_total_treasure_count(const Graph *graph){
     const void * const *payloads = NULL;
@@ -102,17 +46,15 @@ static int compute_total_treasure_count(const Graph *graph){
     return total;
 }
 
-/* Helper: refresh game-over/victory flags based on collected progress */
-static void refresh_completion_state(GameEngine *eng, GameEngineAccessorState *state){
-    if (eng == NULL || eng->player == NULL || state == NULL){
-        return;
+/* Helper: check whether all world treasures are currently collected */
+static bool completion_reached(const GameEngine *eng){
+    if (eng == NULL || eng->player == NULL || eng->graph == NULL){
+        return false;
     }
 
+    int total_treasures = compute_total_treasure_count(eng->graph);
     int collected_count = player_get_collected_count(eng->player);
-    if (state->total_treasure_count > 0 && collected_count >= state->total_treasure_count){
-        state->is_victory = true;
-        state->is_game_over = true;
-    }
+    return (total_treasures > 0) && (collected_count >= total_treasures);
 }
 
 
@@ -206,14 +148,6 @@ Status game_engine_create(const char *config_file_path, GameEngine **engine_out)
 
     }
 
-    Status accessor_status = register_accessor_state(eng, compute_total_treasure_count(eng->graph));
-    if (accessor_status != OK){
-        player_destroy(eng->player);
-        graph_destroy(eng->graph);
-        free(eng);
-        return accessor_status;
-    }
-
     //Sets engine out to the created engine
     *engine_out = eng;
 
@@ -238,7 +172,6 @@ void game_engine_destroy(GameEngine *eng){
 
 
     //Destroys player and graph
-    unregister_accessor_state(eng);
     player_destroy(eng->player);
     graph_destroy(eng->graph);
 
@@ -337,12 +270,11 @@ Status game_engine_get_total_treasure_count(const GameEngine *eng, int *count_ou
         return NULL_POINTER;
     }
 
-    GameEngineAccessorState *state = find_accessor_state(eng);
-    if (state == NULL){
+    if (eng->graph == NULL){
         return INTERNAL_ERROR;
     }
 
-    *count_out = state->total_treasure_count;
+    *count_out = compute_total_treasure_count(eng->graph);
     return OK;
 }
 
@@ -357,14 +289,7 @@ Status game_engine_is_game_over(const GameEngine *eng, bool *is_over_out){
         return NULL_POINTER;
     }
 
-    GameEngineAccessorState *state = find_accessor_state(eng);
-    if (state == NULL){
-        return INTERNAL_ERROR;
-    }
-
-    refresh_completion_state((GameEngine *)eng, state);
-
-    *is_over_out = state->is_game_over;
+    *is_over_out = completion_reached(eng);
     return OK;
 }
 
@@ -379,14 +304,7 @@ Status game_engine_is_victory(const GameEngine *eng, bool *is_victory_out){
         return NULL_POINTER;
     }
 
-    GameEngineAccessorState *state = find_accessor_state(eng);
-    if (state == NULL){
-        return INTERNAL_ERROR;
-    }
-
-    refresh_completion_state((GameEngine *)eng, state);
-
-    *is_victory_out = state->is_victory;
+    *is_victory_out = completion_reached(eng);
     return OK;
 }
 
@@ -470,7 +388,6 @@ static bool portal_is_traversable(const Room *room, int x, int y, int target_roo
 /* Helper: handle treasure tile interaction */
 static Status handle_treasure_tile(
     GameEngine *eng,
-    GameEngineAccessorState *state,
     Room *room,
     int tile_id,
     int next_x,
@@ -496,7 +413,6 @@ static Status handle_treasure_tile(
         return move_status;
     }
 
-    refresh_completion_state(eng, state);
     return OK;
 }
 
@@ -562,11 +478,6 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
         return INVALID_ARGUMENT;
     }
 
-    GameEngineAccessorState *state = find_accessor_state(eng);
-    if (state == NULL){
-        return INTERNAL_ERROR;
-    }
-
     int next_x = 0;
     int next_y = 0;
     Status dir_status = compute_next_position(eng->player->x, eng->player->y, dir, &next_x, &next_y);
@@ -585,7 +496,7 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
     Status move_status = ROOM_IMPASSABLE;
     switch (tile_type){
         case ROOM_TILE_TREASURE:
-            move_status = handle_treasure_tile(eng, state, current_room, tile_id, next_x, next_y);
+            move_status = handle_treasure_tile(eng, current_room, tile_id, next_x, next_y);
             break;
         case ROOM_TILE_PUSHABLE:
             move_status = handle_pushable_tile(eng, current_room, tile_id, dir, next_x, next_y);
@@ -598,10 +509,6 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
             break;
         default:
             return ROOM_IMPASSABLE;
-    }
-
-    if (move_status == OK){
-        refresh_completion_state(eng, state);
     }
 
     return move_status;
@@ -710,11 +617,6 @@ Status game_engine_reset(GameEngine *eng){
 
     }
 
-    GameEngineAccessorState *state = find_accessor_state(eng);
-    if (state == NULL){
-        return INTERNAL_ERROR;
-    }
-
 
     //Resets player to initial position
     Status reset_status = player_reset_to_start(eng->player,eng->initial_room_id,eng->initial_player_x,eng->initial_player_y);
@@ -739,9 +641,6 @@ Status game_engine_reset(GameEngine *eng){
             room->pushables[j].y = room->pushables[j].initial_y;
         }
     }
-
-    state->is_game_over = false;
-    state->is_victory = false;
 
     return OK;
 
