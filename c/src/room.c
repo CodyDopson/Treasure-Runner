@@ -498,6 +498,66 @@ static bool room_switch_is_pressed(const Room *r, int required_switch_id){
     return false;
 }
 
+static char room_base_tile_char(const Room *r, const Charset *charset, int x, int y){
+    if (r->floor_grid == NULL){
+        bool is_border = (x == 0 || y == 0 || x == r->width - 1 || y == r->height - 1);
+        return is_border ? (char)charset->wall : (char)charset->floor;
+    }
+
+    int idx = y * r->width + x;
+    return r->floor_grid[idx] ? (char)charset->floor : (char)charset->wall;
+}
+
+static void room_render_base_tiles(const Room *r, const Charset *charset, char *buffer){
+    for (int y = 0; y < r->height; y++){
+        for (int x = 0; x < r->width; x++){
+            int idx = y * r->width + x;
+            buffer[idx] = room_base_tile_char(r, charset, x, y);
+        }
+    }
+}
+
+static void room_render_treasures(const Room *r, const Charset *charset, char *buffer){
+    for (int i = 0; i < r->treasure_count; i++){
+        Treasure *my_t = &r->treasures[i];
+        if (my_t->collected == false){
+            int idx = my_t->y * r->width + my_t->x;
+            buffer[idx] = (char)charset->treasure;
+        }
+    }
+}
+
+static void room_render_portals(const Room *r, char *buffer){
+    for (int i = 0; i < r->portal_count; i++){
+        Portal *my_p = &r->portals[i];
+        int idx = my_p->y * r->width + my_p->x;
+
+        bool portal_unlocked = true;
+        if (my_p->gated){
+            portal_unlocked = room_switch_is_pressed(r, my_p->required_switch_id);
+        }
+
+        buffer[idx] = portal_unlocked ? 'X' : 'L';
+    }
+}
+
+static void room_render_switches(const Room *r, const Charset *charset, char *buffer){
+    for (int i = 0; i < r->switch_count; i++){
+        Switch *sw = &r->switches[i];
+        int idx = sw->y * r->width + sw->x;
+        bool pressed = room_switch_is_pressed(r, sw->id);
+        buffer[idx] = pressed ? (char)charset->switch_on : (char)charset->switch_off;
+    }
+}
+
+static void room_render_pushables(const Room *r, const Charset *charset, char *buffer){
+    for (int i = 0; i < r->pushable_count; i++){
+        Pushable *my_push = &r->pushables[i];
+        int idx = my_push->y * r->width + my_push->x;
+        buffer[idx] = (char)charset->pushable;
+    }
+}
+
 
 RoomTileType room_classify_tile(const Room *r,int x,int y,int *out_id){
 
@@ -527,67 +587,6 @@ RoomTileType room_classify_tile(const Room *r,int x,int y,int *out_id){
                 return ROOM_TILE_PUSHABLE;
             }
         }
-
-            static char room_base_tile_char(const Room *r, const Charset *charset, int x, int y){
-                if (r->floor_grid == NULL){
-                    bool is_border = (x == 0 || y == 0 || x == r->width - 1 || y == r->height - 1);
-                    return is_border ? (char)charset->wall : (char)charset->floor;
-                }
-
-                int idx = y * r->width + x;
-                return r->floor_grid[idx] ? (char)charset->floor : (char)charset->wall;
-            }
-
-            static void room_render_base_tiles(const Room *r, const Charset *charset, char *buffer){
-                for (int y = 0; y < r->height; y++){
-                    for (int x = 0; x < r->width; x++){
-                        int idx = y * r->width + x;
-                        buffer[idx] = room_base_tile_char(r, charset, x, y);
-                    }
-                }
-            }
-
-            static void room_render_treasures(const Room *r, const Charset *charset, char *buffer){
-                for (int i = 0; i < r->treasure_count; i++){
-                    Treasure *my_t = &r->treasures[i];
-                    if (my_t->collected == false){
-                        int idx = my_t->y * r->width + my_t->x;
-                        buffer[idx] = (char)charset->treasure;
-                    }
-                }
-            }
-
-            static void room_render_portals(const Room *r, char *buffer){
-                for (int i = 0; i < r->portal_count; i++){
-                    Portal *my_p = &r->portals[i];
-                    int idx = my_p->y * r->width + my_p->x;
-
-                    bool portal_unlocked = true;
-                    if (my_p->gated){
-                        portal_unlocked = room_switch_is_pressed(r, my_p->required_switch_id);
-                    }
-
-                    buffer[idx] = portal_unlocked ? 'X' : 'L';
-                }
-            }
-
-            static void room_render_switches(const Room *r, const Charset *charset, char *buffer){
-                for (int i = 0; i < r->switch_count; i++){
-                    Switch *sw = &r->switches[i];
-                    int idx = sw->y * r->width + sw->x;
-                    bool pressed = room_switch_is_pressed(r, sw->id);
-                    buffer[idx] = pressed ? (char)charset->switch_on : (char)charset->switch_off;
-                }
-            }
-
-            static void room_render_pushables(const Room *r, const Charset *charset, char *buffer){
-                for (int i = 0; i < r->pushable_count; i++){
-                    Pushable *my_push = &r->pushables[i];
-                    int idx = my_push->y * r->width + my_push->x;
-                    buffer[idx] = (char)charset->pushable;
-                }
-            }
-
     }
 
     //checks if the tile is walkable
