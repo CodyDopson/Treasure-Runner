@@ -466,7 +466,7 @@ static RoomTileType room_check_portal(const Room *r, int x, int y, int *out_id) 
     return ROOM_TILE_INVALID;
 }
 
-/* Helper: resolve a switch by required ID/index and report pressed state */
+// Helper: resolve a switch by required ID/index and report pressed state 
 static bool room_switch_is_pressed(const Room *r, int required_switch_id){
     if (r == NULL || r->switches == NULL || r->switch_count <= 0){
         return false;
