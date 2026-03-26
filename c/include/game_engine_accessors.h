@@ -7,6 +7,18 @@
 /* Forward declaration */
 typedef struct GameEngine GameEngine;
 
+/*
+ * Accessor-side engine state used to store metadata that must not be added
+ * directly to GameEngine in game_engine.h.
+ */
+typedef struct GameEngineAccessorState {
+    GameEngine *engine;                    /* Owning engine instance */
+    int total_treasure_count;              /* Cached world treasure total */
+    bool is_game_over;                     /* Terminal-state flag */
+    bool is_victory;                       /* Completion-state flag */
+    struct GameEngineAccessorState *next;  /* Registry linkage */
+} GameEngineAccessorState;
+
 /* ============================================================
  * Player State Accessors
  * 

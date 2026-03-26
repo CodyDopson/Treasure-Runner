@@ -18,15 +18,15 @@ extern Status game_engine_is_victory(const GameEngine *eng, bool *is_victory_out
 static GameEngine *engine = NULL;
 static const char *config_path = "../assets/starter.ini";
 
-static bool test_place_player_adjacent_to_treasure(GameEngine *eng, Direction *dir_out){
-    if (eng == NULL || dir_out == NULL || eng->graph == NULL || eng->player == NULL){
-        return false;
+static Status test_collect_all_treasures(GameEngine *eng){
+    if (eng == NULL || eng->graph == NULL || eng->player == NULL){
+        return INVALID_ARGUMENT;
     }
 
     const void * const *payloads = NULL;
     int payload_count = 0;
     if (graph_get_all_payloads(eng->graph, &payloads, &payload_count) != GRAPH_STATUS_OK){
-        return false;
+        return INTERNAL_ERROR;
     }
 
     for (int i = 0; i < payload_count; ++i){
@@ -37,41 +37,20 @@ static bool test_place_player_adjacent_to_treasure(GameEngine *eng, Direction *d
                 continue;
             }
 
-            const int tx = treasure->x;
-            const int ty = treasure->y;
-
-            if (room_classify_tile(room, tx, ty, NULL) != ROOM_TILE_TREASURE){
-                continue;
+            Treasure *picked = NULL;
+            Status pickup_status = room_pick_up_treasure(room, treasure->id, &picked);
+            if (pickup_status != OK){
+                return pickup_status;
             }
 
-            if (room_classify_tile(room, tx, ty - 1, NULL) == ROOM_TILE_FLOOR){
-                player_move_to_room(eng->player, room->id);
-                player_set_position(eng->player, tx, ty - 1);
-                *dir_out = DIR_SOUTH;
-                return true;
-            }
-            if (room_classify_tile(room, tx, ty + 1, NULL) == ROOM_TILE_FLOOR){
-                player_move_to_room(eng->player, room->id);
-                player_set_position(eng->player, tx, ty + 1);
-                *dir_out = DIR_NORTH;
-                return true;
-            }
-            if (room_classify_tile(room, tx - 1, ty, NULL) == ROOM_TILE_FLOOR){
-                player_move_to_room(eng->player, room->id);
-                player_set_position(eng->player, tx - 1, ty);
-                *dir_out = DIR_EAST;
-                return true;
-            }
-            if (room_classify_tile(room, tx + 1, ty, NULL) == ROOM_TILE_FLOOR){
-                player_move_to_room(eng->player, room->id);
-                player_set_position(eng->player, tx + 1, ty);
-                *dir_out = DIR_WEST;
-                return true;
+            Status collect_status = player_try_collect(eng->player, picked);
+            if (collect_status != OK){
+                return collect_status;
             }
         }
     }
 
-    return false;
+    return OK;
 }
 
 
@@ -465,23 +444,15 @@ END_TEST
 
 START_TEST(test_game_engine_victory_after_final_treasure_collected){
 
-    Direction collect_dir = DIR_NORTH;
-    bool placed = test_place_player_adjacent_to_treasure(engine, &collect_dir);
-    ck_assert(placed);
+    int total = 0;
+    ck_assert_int_eq(game_engine_get_total_treasure_count(engine, &total), OK);
+    ck_assert_int_gt(total, 0);
 
-    int collected_before = 0;
-    ck_assert_int_eq(game_engine_get_player_collected_count(engine, &collected_before), OK);
-
-    engine->total_treasure_count = collected_before + 1;
-    engine->is_game_over = false;
-    engine->is_victory = false;
-
-    Status move_status = game_engine_move_player(engine, collect_dir);
-    ck_assert_int_eq(move_status, OK);
+    ck_assert_int_eq(test_collect_all_treasures(engine), OK);
 
     int collected_after = 0;
     ck_assert_int_eq(game_engine_get_player_collected_count(engine, &collected_after), OK);
-    ck_assert_int_eq(collected_after, collected_before + 1);
+    ck_assert_int_eq(collected_after, total);
 
     bool is_victory = false;
     bool is_game_over = false;
