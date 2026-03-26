@@ -501,11 +501,17 @@ static bool room_switch_is_pressed(const Room *r, int required_switch_id){
 static char room_base_tile_char(const Room *r, const Charset *charset, int x, int y){
     if (r->floor_grid == NULL){
         bool is_border = (x == 0 || y == 0 || x == r->width - 1 || y == r->height - 1);
-        return is_border ? (char)charset->wall : (char)charset->floor;
+        if (is_border){
+            return charset->wall;
+        }
+        return charset->floor;
     }
 
     int idx = y * r->width + x;
-    return r->floor_grid[idx] ? (char)charset->floor : (char)charset->wall;
+    if (r->floor_grid[idx]){
+        return charset->floor;
+    }
+    return charset->wall;
 }
 
 static void room_render_base_tiles(const Room *r, const Charset *charset, char *buffer){
@@ -546,7 +552,11 @@ static void room_render_switches(const Room *r, const Charset *charset, char *bu
         Switch *sw = &r->switches[i];
         int idx = sw->y * r->width + sw->x;
         bool pressed = room_switch_is_pressed(r, sw->id);
-        buffer[idx] = pressed ? (char)charset->switch_on : (char)charset->switch_off;
+        if (pressed){
+            buffer[idx] = charset->switch_on;
+        } else {
+            buffer[idx] = charset->switch_off;
+        }
     }
 }
 
