@@ -12,7 +12,7 @@ from .player import Player
 
 
 if TYPE_CHECKING:
-    from .game_ui import GameUI
+    from ..ui.game_ui import GameUI
 
 
 class GameEngine:
