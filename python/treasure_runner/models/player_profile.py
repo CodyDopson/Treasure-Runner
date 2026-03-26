@@ -80,11 +80,13 @@ def update_profile_after_run(profile: dict, run_treasure_collected: int, run_roo
     normalized["games_played"] = normalized["games_played"] + 1
     normalized["max_treasure_collected"] = max(
         normalized["max_treasure_collected"],
-        max(run_treasure_collected, 0),
+        run_treasure_collected,
+        0,
     )
     normalized["most_rooms_world_completed"] = max(
         normalized["most_rooms_world_completed"],
-        max(run_rooms_completed, 0),
+        run_rooms_completed,
+        0,
     )
     normalized["timestamp_last_played"] = _utc_now_iso()
     return normalized

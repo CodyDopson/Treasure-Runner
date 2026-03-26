@@ -30,11 +30,14 @@ static Room *get_room_by_id(Graph *g, int room_id){
 }
 
 /* Accessor-side state registry for per-engine completion metadata. */
-static GameEngineAccessorState *g_accessor_states = NULL;
+static GameEngineAccessorState **accessor_state_head(void){
+    static GameEngineAccessorState *head = NULL;
+    return &head;
+}
 
 /* Helper: find accessor state node for an engine */
 static GameEngineAccessorState *find_accessor_state(const GameEngine *eng){
-    GameEngineAccessorState *node = g_accessor_states;
+    GameEngineAccessorState *node = *accessor_state_head();
     while (node != NULL){
         if (node->engine == eng){
             return node;
@@ -46,6 +49,7 @@ static GameEngineAccessorState *find_accessor_state(const GameEngine *eng){
 
 /* Helper: create and register accessor state */
 static Status register_accessor_state(GameEngine *eng, int total_treasures){
+    GameEngineAccessorState **head = accessor_state_head();
     GameEngineAccessorState *node = malloc(sizeof(GameEngineAccessorState));
     if (node == NULL){
         return NO_MEMORY;
@@ -55,20 +59,21 @@ static Status register_accessor_state(GameEngine *eng, int total_treasures){
     node->total_treasure_count = total_treasures;
     node->is_game_over = false;
     node->is_victory = false;
-    node->next = g_accessor_states;
-    g_accessor_states = node;
+    node->next = *head;
+    *head = node;
     return OK;
 }
 
 /* Helper: remove accessor state node for an engine */
 static void unregister_accessor_state(GameEngine *eng){
+    GameEngineAccessorState **head = accessor_state_head();
     GameEngineAccessorState *prev = NULL;
-    GameEngineAccessorState *node = g_accessor_states;
+    GameEngineAccessorState *node = *head;
 
     while (node != NULL){
         if (node->engine == eng){
             if (prev == NULL){
-                g_accessor_states = node->next;
+                *head = node->next;
             } else {
                 prev->next = node->next;
             }

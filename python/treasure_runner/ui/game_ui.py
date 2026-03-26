@@ -81,29 +81,21 @@ class GameUI:
 
         max_y, max_x = self._stdscr.getmaxyx()
         lines = room_text.splitlines()
-        board_width = max((len(line) for line in lines), default=0)
-        board_height = len(lines)
+        board_width = self._ensure_render_size(lines, max_x, max_y)
 
-        required_width = min(max(board_width + 16, self.MIN_WIDTH), 5000)
-        required_height = max(self.BOARD_TOP + board_height + self.FOOTER_LINES + 1, self.MIN_HEIGHT)
-        if max_x < required_width or max_y < required_height:
-            raise TerminalTooSmallError(
-                f"Terminal too small: need at least {required_width}x{required_height}, got {max_x}x{max_y}."
-            )
-
-        self._draw_message_bar(max_x)
-        self._draw_room_header(engine.get_player_room(), max_x)
+        self._draw_message_bar()
+        self._draw_room_header(engine.get_player_room())
 
         self._draw_board(lines, max_x, max_y)
 
         self._draw_legend(max_x, board_width)
         self._draw_status(engine, profile_path, stats)
-        self._draw_title_and_email(max_x)
+        self._draw_title_and_email()
         self._stdscr.refresh()
 
     def _draw_status(self, engine: "GameEngine", profile_path: str = "", stats: dict | None = None) -> None:
         """Show player progress and controls above the game footer."""
-        max_y, max_x = self._stdscr.getmaxyx()
+        max_y, _ = self._stdscr.getmaxyx()
         self._stdscr.move(max_y - 3, 0)
         self._stdscr.clrtoeol()
         status_text = self._status_text(engine, profile_path, stats)
@@ -125,15 +117,17 @@ class GameUI:
 
     def _status_text(self, engine: "GameEngine", profile_path: str, stats: dict | None) -> str:
         details = stats or {}
-        rooms_played = details.get("rooms_played", 1)
-        rooms_left = max(details.get("total_rooms", 0) - rooms_played, 0)
+        rooms_played = int(details.get("rooms_played", 1))
+        total_rooms = int(details.get("total_rooms", 0))
+        rooms_left = max(total_rooms - rooms_played, 0)
         total_treasures = int(details.get("total_treasures", engine.get_total_treasure_count()))
         collected_treasures = engine.get_player_collected_count()
         profile_name = os.path.basename(profile_path) if profile_path else "-"
-        position = engine.get_player_position()
+        player_room = engine.get_player_room()
+        player_x, player_y = engine.get_player_position()
         return (
             f"Status: Treasures={collected_treasures}/{total_treasures} Rooms Played={rooms_played} "
-            f"Rooms Left={rooms_left} Room={engine.get_player_room()} Pos=({position[0]},{position[1]}) "
+            f"Rooms Left={rooms_left} Room={player_room} Pos=({player_x},{player_y}) "
             f"Profile={profile_name}"
         )
 
@@ -182,18 +176,17 @@ class GameUI:
     def message(self, msg: str) -> None:
         """Display a transient message at the top of the screen."""
         self._last_message = msg
-        _, max_x = self._stdscr.getmaxyx()
-        self._draw_message_bar(max_x)
+        self._draw_message_bar()
         self._stdscr.refresh()
 
-    def _draw_message_bar(self, max_x: int) -> None:
+    def _draw_message_bar(self) -> None:
         self._stdscr.move(0, 0)
         self._stdscr.clrtoeol()
         if self._last_message:
             text = f"Message: {self._last_message}"
             self._safe_addstr(0, 0, text, curses.A_BOLD)
 
-    def _draw_room_header(self, room_id: int, max_x: int) -> None:
+    def _draw_room_header(self, room_id: int) -> None:
         self._stdscr.move(1, 0)
         self._stdscr.clrtoeol()
         header = f"Room {room_id}"
@@ -215,7 +208,7 @@ class GameUI:
                 self._stdscr.clrtoeol()
                 self._safe_addstr(y, legend_x, text)
 
-    def _draw_title_and_email(self, max_x: int) -> None:
+    def _draw_title_and_email(self) -> None:
         max_y, _ = self._stdscr.getmaxyx()
         title_y = max_y - 1
         self._stdscr.move(title_y, 0)
@@ -244,18 +237,8 @@ class GameUI:
     def show_profile_summary(self, title: str, profile: dict, footer: str) -> None:
         """Render profile summary screen using curses and wait for keypress."""
         self._clear_screen()
-        max_y, max_x = self._stdscr.getmaxyx()
-        lines = [
-            title,
-            "",
-            f"Player: {profile.get('player_name', 'Player')}",
-            f"Games Played: {profile.get('games_played', 0)}",
-            f"Max Treasure Collected: {profile.get('max_treasure_collected', 0)}",
-            f"Most Rooms Completed: {profile.get('most_rooms_world_completed', 0)}",
-            f"Last Played: {profile.get('timestamp_last_played', '-')}",
-            "",
-            footer,
-        ]
+        max_y, _ = self._stdscr.getmaxyx()
+        lines = self._profile_summary_lines(title, profile, footer)
 
         start_y = max((max_y - len(lines)) // 2, 0)
         for offset, line in enumerate(lines):
@@ -308,6 +291,32 @@ class GameUI:
         except curses.error:
             pass
 
+    def _ensure_render_size(self, lines: list[str], max_x: int, max_y: int) -> int:
+        """Validate terminal dimensions for current board and return board width."""
+        board_width = max((len(line) for line in lines), default=0)
+        board_height = len(lines)
+        required_width = min(max(board_width + 16, self.MIN_WIDTH), 5000)
+        required_height = max(self.BOARD_TOP + board_height + self.FOOTER_LINES + 1, self.MIN_HEIGHT)
+        if max_x < required_width or max_y < required_height:
+            raise TerminalTooSmallError(
+                f"Terminal too small: need at least {required_width}x{required_height}, got {max_x}x{max_y}."
+            )
+        return board_width
+
+    def _profile_summary_lines(self, title: str, profile: dict, footer: str) -> list[str]:
+        """Build profile summary lines for rendering."""
+        return [
+            title,
+            "",
+            f"Player: {profile.get('player_name', 'Player')}",
+            f"Games Played: {profile.get('games_played', 0)}",
+            f"Max Treasure Collected: {profile.get('max_treasure_collected', 0)}",
+            f"Most Rooms Completed: {profile.get('most_rooms_world_completed', 0)}",
+            f"Last Played: {profile.get('timestamp_last_played', '-')}",
+            "",
+            footer,
+        ]
+
 
 def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
     """Initialize the view and execute the controller loop."""
@@ -316,7 +325,7 @@ def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
     profile, _ = load_or_create_profile(profile_path, ui_view.prompt_player_name)
     ui_view.show_profile_summary("Player Profile", profile, "Press any key to start game")
 
-    engine = None
+    engine: GameEngine | None = None
     exit_code = 1
     try:
         engine = GameEngine(config_path)
@@ -330,25 +339,24 @@ def _curses_main(stdscr, config_path: str, profile_path: str) -> int:
         ui_view.message(f"Error: {exc}")
         return 1
     finally:
-        run_treasure_collected = 0
-        run_rooms_completed = 0
-        if engine is not None:
-            try:
-                stats = engine.get_last_run_stats()
-                run_treasure_collected = int(stats.get("treasure_collected", 0))
-                run_rooms_completed = int(stats.get("rooms_completed", 0))
-            except GameEngineError:
-                run_treasure_collected = 0
-                run_rooms_completed = 0
-            engine.destroy()
-
-        updated_profile = update_profile_after_run(
-            profile,
-            run_treasure_collected,
-            run_rooms_completed,
-        )
+        run_treasure_collected, run_rooms_completed = _finalize_engine(engine)
+        updated_profile = update_profile_after_run(profile, run_treasure_collected, run_rooms_completed)
         save_profile(profile_path, updated_profile)
         ui_view.show_profile_summary("Session Summary", updated_profile, "Press any key to exit")
+
+
+def _finalize_engine(engine: GameEngine | None) -> tuple[int, int]:
+    """Collect final run stats and destroy engine safely."""
+    if engine is None:
+        return 0, 0
+
+    try:
+        stats = engine.get_last_run_stats()
+        return int(stats.get("treasure_collected", 0)), int(stats.get("rooms_completed", 0))
+    except GameEngineError:
+        return 0, 0
+    finally:
+        engine.destroy()
 
 
 def _resolve_profile_path(profile_path: str) -> str:

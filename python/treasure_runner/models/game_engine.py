@@ -197,6 +197,29 @@ class GameEngine:
         Returns:
             Process-style status code
         """
+        total_rooms, total_treasures, visited_rooms = self._init_run_state()
+        ui_view.message("Use WASD/arrows to move, r to reset, q to quit.")
+
+        while True:
+            if not self._render_loop_frame(ui_view, profile_path, total_rooms, total_treasures, visited_rooms):
+                return 1
+
+            if self.is_victory():
+                return self._render_victory_frame(
+                    ui_view,
+                    profile_path,
+                    total_rooms,
+                    total_treasures,
+                    visited_rooms,
+                )
+
+            key = ui_view.read_key()
+            result = self._handle_loop_input(ui_view, key, visited_rooms, total_treasures)
+            if result is not None:
+                return result
+
+    def _init_run_state(self) -> tuple[int, int, set[int]]:
+        """Initialize run counters and return shared loop state."""
         total_rooms = self.get_room_count()
         total_treasures = self.get_total_treasure_count()
         visited_rooms = {self.get_player_room()}
@@ -206,37 +229,38 @@ class GameEngine:
             "total_treasures": total_treasures,
             "steps_taken": 0,
         }
-        ui_view.message("Use WASD/arrows to move, r to reset, q to quit.")
+        return total_rooms, total_treasures, visited_rooms
 
-        while True:
-            if not self._render_loop_frame(ui_view, profile_path, total_rooms, total_treasures, visited_rooms):
-                return 1
+    def _render_victory_frame(
+        self,
+        ui_view: "GameUI",
+        profile_path: str,
+        total_rooms: int,
+        total_treasures: int,
+        visited_rooms: set[int],
+    ) -> int:
+        """Render final victory message and frame, then terminate successfully."""
+        rooms_visited = len(visited_rooms)
+        profile_name = profile_path.rsplit("/", 1)[-1] if profile_path else "-"
+        steps_taken = int(self._last_run_stats.get("steps_taken", 0))
+        collected_count = self.get_player_collected_count()
 
-            if self.is_victory():
-                steps_taken = int(self._last_run_stats.get("steps_taken", 0))
-                rooms_visited = len(visited_rooms)
-                profile_name = profile_path.rsplit("/", 1)[-1] if profile_path else "-"
-                ui_view.message(
-                    "Victory! "
-                    f"Profile={profile_name} | "
-                    f"Treasures={self.get_player_collected_count()}/{total_treasures} | "
-                    f"Steps={steps_taken} | Rooms Visited={rooms_visited}"
-                )
-                ui_view.render(
-                    self,
-                    profile_path,
-                    {
-                        "total_rooms": total_rooms,
-                        "rooms_played": rooms_visited,
-                        "total_treasures": total_treasures,
-                    },
-                )
-                return 0
-
-            key = ui_view.read_key()
-            result = self._handle_loop_input(ui_view, key, visited_rooms, total_treasures)
-            if result is not None:
-                return result
+        ui_view.message(
+            "Victory! "
+            f"Profile={profile_name} | "
+            f"Treasures={collected_count}/{total_treasures} | "
+            f"Steps={steps_taken} | Rooms Visited={rooms_visited}"
+        )
+        ui_view.render(
+            self,
+            profile_path,
+            {
+                "total_rooms": total_rooms,
+                "rooms_played": rooms_visited,
+                "total_treasures": total_treasures,
+            },
+        )
+        return 0
 
     def _render_loop_frame(
         self,
@@ -317,7 +341,7 @@ class GameEngine:
             self._last_run_stats["steps_taken"] = int(self._last_run_stats.get("steps_taken", 0)) + 1
             current_collected = self.get_player_collected_count()
             if current_collected > previous_collected:
-                if current_collected >= total_treasures and total_treasures > 0:
+                if 0 < total_treasures <= current_collected:
                     ui_view.message(f"Treasure progress: {current_collected}/{total_treasures} treasures collected")
                 else:
                     ui_view.message(f"You picked up a treasure ({current_collected}/{total_treasures})")
