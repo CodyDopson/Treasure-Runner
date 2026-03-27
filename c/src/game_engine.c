@@ -57,81 +57,6 @@ static bool completion_reached(const GameEngine *eng){
     return (total_treasures > 0) && (collected_count >= total_treasures);
 }
 
-static GameEngineAccessorState **accessor_state_registry_head(void){
-    static GameEngineAccessorState *registry = NULL;
-    return &registry;
-}
-
-static void free_switch_entries(GameEngineAccessorState *state){
-    if (state == NULL){
-        return;
-    }
-
-    free(state->switch_entries);
-    state->switch_entries = NULL;
-    state->switch_entry_count = 0;
-}
-
-static GameEngineAccessorState *get_accessor_state(GameEngine *eng, bool create_if_missing){
-    GameEngineAccessorState **registry_head = accessor_state_registry_head();
-    GameEngineAccessorState *cur = *registry_head;
-    while (cur != NULL){
-        if (cur->engine == eng){
-            return cur;
-        }
-        cur = cur->next;
-    }
-
-    if (!create_if_missing){
-        return NULL;
-    }
-
-    GameEngineAccessorState *created = calloc(1, sizeof(GameEngineAccessorState));
-    if (created == NULL){
-        return NULL;
-    }
-
-    created->engine = eng;
-    created->next = *registry_head;
-    *registry_head = created;
-    return created;
-}
-
-static void unregister_accessor_state(GameEngine *eng){
-    GameEngineAccessorState **registry_head = accessor_state_registry_head();
-    GameEngineAccessorState *prev = NULL;
-    GameEngineAccessorState *cur = *registry_head;
-
-    while (cur != NULL){
-        if (cur->engine == eng){
-            if (prev == NULL){
-                *registry_head = cur->next;
-            } else {
-                prev->next = cur->next;
-            }
-            free_switch_entries(cur);
-            free(cur);
-            return;
-        }
-        prev = cur;
-        cur = cur->next;
-    }
-}
-
-static int find_switch_entry_index(const GameEngineAccessorState *state, int room_id, int switch_id){
-    if (state == NULL || state->switch_entries == NULL){
-        return -1;
-    }
-
-    for (int i = 0; i < state->switch_entry_count; ++i){
-        if (state->switch_entries[i].room_id == room_id && state->switch_entries[i].switch_id == switch_id){
-            return i;
-        }
-    }
-
-    return -1;
-}
-
 static int resolve_room_switch_id(const Room *room, int required_switch_id){
     if (room == NULL || room->switches == NULL || room->switch_count <= 0 || required_switch_id < 0){
         return -1;
@@ -167,140 +92,66 @@ static bool room_switch_id_at(const Room *room, int x, int y, int *switch_id_out
     return false;
 }
 
-static Status ensure_switch_entries_initialized(GameEngine *eng){
-    if (eng == NULL || eng->graph == NULL){
-        return INVALID_ARGUMENT;
+static bool switch_controls_unlocked_portal(const Room *room, int switch_id){
+    if (room == NULL || switch_id < 0 || room->switches == NULL){
+        return false;
     }
 
-    GameEngineAccessorState *state = get_accessor_state(eng, true);
-    if (state == NULL){
-        return NO_MEMORY;
-    }
-
-    if (state->switch_entries != NULL){
-        return OK;
-    }
-
-    const void * const *payloads = NULL;
-    int payload_count = 0;
-    if (graph_get_all_payloads(eng->graph, &payloads, &payload_count) != GRAPH_STATUS_OK){
-        return INTERNAL_ERROR;
-    }
-
-    int total_switches = 0;
-    for (int i = 0; i < payload_count; ++i){
-        const Room *room = (const Room *)payloads[i];
-        total_switches += room->switch_count;
-    }
-
-    if (total_switches <= 0){
-        state->switch_entries = NULL;
-        state->switch_entry_count = 0;
-        return OK;
-    }
-
-    SwitchActivationEntry *entries = calloc((size_t)total_switches, sizeof(SwitchActivationEntry));
-    if (entries == NULL){
-        return NO_MEMORY;
-    }
-
-    int idx = 0;
-    for (int i = 0; i < payload_count; ++i){
-        const Room *room = (const Room *)payloads[i];
-        for (int j = 0; j < room->switch_count; ++j){
-            entries[idx].room_id = room->id;
-            entries[idx].switch_id = room->switches[j].id;
-            entries[idx].activated = false;
-            idx++;
+    const Switch *sw = NULL;
+    for (int i = 0; i < room->switch_count; ++i){
+        if (room->switches[i].id == switch_id){
+            sw = &room->switches[i];
+            break;
         }
     }
 
-    state->switch_entries = entries;
-    state->switch_entry_count = total_switches;
-    return OK;
+    if (sw == NULL){
+        return false;
+    }
+
+    if (sw->portal_id >= 0 && sw->portal_id < room->portal_count){
+        return !room->portals[sw->portal_id].gated;
+    }
+
+    for (int i = 0; i < room->portal_count; ++i){
+        if (room->portals[i].id == sw->portal_id){
+            return !room->portals[i].gated;
+        }
+    }
+
+    return false;
 }
 
-static bool accessor_switch_activated(const GameEngine *eng, const Room *room, int required_switch_id){
-    if (eng == NULL || room == NULL){
-        return false;
-    }
-
-    int switch_id = resolve_room_switch_id(room, required_switch_id);
-    if (switch_id < 0){
-        return false;
-    }
-
-    GameEngineAccessorState *state = get_accessor_state((GameEngine *)eng, false);
-    if (state == NULL){
-        return false;
-    }
-
-    int idx = find_switch_entry_index(state, room->id, switch_id);
-    if (idx < 0){
-        return false;
-    }
-
-    return state->switch_entries[idx].activated;
-}
-
-static Status accessor_mark_switch_activated(GameEngine *eng, const Room *room, int switch_id){
-    if (eng == NULL || room == NULL || switch_id < 0){
+static Status unlock_portal_for_switch(Room *room, int switch_id){
+    if (room == NULL || switch_id < 0){
         return INVALID_ARGUMENT;
     }
 
-    Status init_status = ensure_switch_entries_initialized(eng);
-    if (init_status != OK){
-        return init_status;
+    const Switch *sw = NULL;
+    for (int i = 0; i < room->switch_count; ++i){
+        if (room->switches[i].id == switch_id){
+            sw = &room->switches[i];
+            break;
+        }
     }
 
-    GameEngineAccessorState *state = get_accessor_state(eng, false);
-    if (state == NULL){
-        return INTERNAL_ERROR;
-    }
-
-    int idx = find_switch_entry_index(state, room->id, switch_id);
-    if (idx < 0){
+    if (sw == NULL){
         return ROOM_NOT_FOUND;
     }
 
-    state->switch_entries[idx].activated = true;
-    return OK;
-}
-
-static void accessor_reset_switches(GameEngine *eng){
-    GameEngineAccessorState *state = get_accessor_state(eng, false);
-    if (state == NULL || state->switch_entries == NULL){
-        return;
+    if (sw->portal_id >= 0 && sw->portal_id < room->portal_count){
+        room->portals[sw->portal_id].gated = false;
+        return OK;
     }
 
-    for (int i = 0; i < state->switch_entry_count; ++i){
-        state->switch_entries[i].activated = false;
-    }
-}
-
-static void apply_activated_switch_overlays(const GameEngine *eng,
-                                            const Room *room,
-                                            const Charset *charset,
-                                            char *flat_buffer,
-                                            int width,
-                                            int height){
-    if (eng == NULL || room == NULL || charset == NULL || flat_buffer == NULL){
-        return;
-    }
-
-    for (int i = 0; i < room->switch_count; ++i){
-        const Switch *sw = &room->switches[i];
-        if (!accessor_switch_activated(eng, room, sw->id)){
-            continue;
+    for (int i = 0; i < room->portal_count; ++i){
+        if (room->portals[i].id == sw->portal_id){
+            room->portals[i].gated = false;
+            return OK;
         }
-
-        if (sw->x < 0 || sw->x >= width || sw->y < 0 || sw->y >= height){
-            continue;
-        }
-
-        int idx = sw->y * width + sw->x;
-        flat_buffer[idx] = charset->switch_on;
     }
+
+    return ROOM_NOT_FOUND;
 }
 
 
@@ -394,14 +245,6 @@ Status game_engine_create(const char *config_file_path, GameEngine **engine_out)
 
     }
 
-    Status switch_state_status = ensure_switch_entries_initialized(eng);
-    if (switch_state_status != OK){
-        player_destroy(eng->player);
-        graph_destroy(eng->graph);
-        free(eng);
-        return switch_state_status;
-    }
-
     //Sets engine out to the created engine
     *engine_out = eng;
 
@@ -423,8 +266,6 @@ void game_engine_destroy(GameEngine *eng){
         return;//exits
 
     }
-
-    unregister_accessor_state(eng);
 
     //Destroys player and graph
     player_destroy(eng->player);
@@ -631,13 +472,13 @@ Status game_engine_is_switch_activated(const GameEngine *eng,
         return GE_NO_SUCH_ROOM;
     }
 
-    *is_activated_out = accessor_switch_activated(eng, room, switch_id);
+    *is_activated_out = switch_controls_unlocked_portal(room, switch_id);
     return OK;
 }
 
 
 /* Helper: check if a gated portal's switch is pressed */
-static bool is_switch_pressed(const GameEngine *eng, const Room *room, int switch_id){
+static bool is_switch_pressed(const Room *room, int switch_id){
     if (room == NULL || room->switches == NULL || room->switch_count <= 0 || switch_id < 0){
         return false;
     }
@@ -658,7 +499,7 @@ static bool is_switch_pressed(const GameEngine *eng, const Room *room, int switc
         return false;
     }
 
-    if (accessor_switch_activated(eng, room, switch_id)){
+    if (switch_controls_unlocked_portal(room, resolve_room_switch_id(room, switch_id))){
         return true;
     }
 
@@ -679,7 +520,7 @@ static bool portal_is_traversable(const GameEngine *eng, const Room *room, int x
     for (int i = 0; i < room->portal_count; ++i){
         Portal *p = &room->portals[i];
         if (p->x == x && p->y == y && p->gated){
-            return is_switch_pressed(eng, room, p->required_switch_id);
+            return is_switch_pressed(room, p->required_switch_id);
         }
     }
     return true;
@@ -742,7 +583,7 @@ static Status handle_pushable_tile(GameEngine *eng, Room *room, int tile_id, Dir
     }
 
     if (consumes_on_switch){
-        Status mark_status = accessor_mark_switch_activated(eng, room, consumed_switch_id);
+        Status mark_status = unlock_portal_for_switch(room, consumed_switch_id);
         if (mark_status != OK){
             return mark_status;
         }
@@ -986,7 +827,12 @@ Status game_engine_reset(GameEngine *eng){
         }
     }
 
-    accessor_reset_switches(eng);
+    for (int i = 0; i < payload_count; i++){
+        Room *room = (Room *)payloads[i];
+        for (int j = 0; j < room->portal_count; j++){
+            room->portals[j].gated = (room->portals[j].required_switch_id >= 0);
+        }
+    }
 
     return OK;
 
@@ -1039,8 +885,6 @@ Status game_engine_render_current_room(const GameEngine *eng, char **str_out){
         free(flat_buffer);
         return render_status;
     }
-
-    apply_activated_switch_overlays(eng, room, &eng->charset, flat_buffer, width, height);
 
     // overlay player
     if (eng->player != NULL && eng->player->room_id == room->id) {
@@ -1165,8 +1009,6 @@ Status game_engine_render_room(const GameEngine *eng, int room_id, char **str_ou
         return render_status;
 
     }
-
-    apply_activated_switch_overlays(eng, room, &eng->charset, flat_buffer, width, height);
 
 
     // Format with newlines

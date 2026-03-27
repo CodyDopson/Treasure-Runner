@@ -502,6 +502,18 @@ static bool room_switch_is_pressed(const Room *r, int required_switch_id){
         return false;
     }
 
+    if (sw->portal_id >= 0 && sw->portal_id < r->portal_count){
+        if (!r->portals[sw->portal_id].gated){
+            return true;
+        }
+    } else {
+        for (int i = 0; i < r->portal_count; ++i){
+            if (r->portals[i].id == sw->portal_id && !r->portals[i].gated){
+                return true;
+            }
+        }
+    }
+
     for (int i = 0; i < r->pushable_count; ++i){
         if (r->pushables[i].x == sw->x && r->pushables[i].y == sw->y){
             return true;
