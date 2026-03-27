@@ -150,6 +150,10 @@ lib.game_engine_get_player.restype = Player
 lib.game_engine_move_player.argtypes = [GameEngine, ctypes.c_int]
 lib.game_engine_move_player.restype = Status
 
+# game_engine_enter_portal(GameEngine *eng)
+lib.game_engine_enter_portal.argtypes = [GameEngine]
+lib.game_engine_enter_portal.restype = Status
+
 # game_engine_render_current_room(const GameEngine *eng, char **str_out)
 lib.game_engine_render_current_room.argtypes = [
     GameEngine,

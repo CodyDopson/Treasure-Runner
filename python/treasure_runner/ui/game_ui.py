@@ -103,7 +103,7 @@ class GameUI:
 
         self._stdscr.move(max_y - 2, 0)
         self._stdscr.clrtoeol()
-        self._safe_addstr(max_y - 2, 0, "Controls: Arrows/WASD move | r reset | q quit")
+        self._safe_addstr(max_y - 2, 0, "Controls: Arrows/WASD move | > enter portal | r reset | q quit")
 
     def _draw_board(self, lines: list[str], max_x: int, max_y: int) -> None:
         board_bottom = max_y - self.FOOTER_LINES - 1
@@ -195,8 +195,7 @@ class GameUI:
             "@ player",
             "# wall",
             "$ gold",
-            "L locked portal",
-            "X unlocked portal",
+            "X portal",
             "s switch off",
             "S switch on",
         ]

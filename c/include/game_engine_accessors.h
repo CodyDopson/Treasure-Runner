@@ -170,4 +170,23 @@ Status game_engine_get_player_collected_treasures(const GameEngine *eng,
                                                    const Treasure * const **treasures_out,
                                                    int *count_out);
 
+/*
+ * game_engine_enter_portal
+ * ------------------------
+ * Attempt to enter a portal from the player's current tile.
+ *
+ * Behavior:
+ *   • If the player is standing on a portal tile, transition to the portal's target room.
+ *   • If the portal is gated and its switch is not pressed, entry is blocked.
+ *
+ * Returns:
+ *   OK on success
+ *   INVALID_ARGUMENT if inputs are invalid
+ *   ROOM_NO_PORTAL if player is not on a portal tile
+ *   ROOM_IMPASSABLE if the portal is currently locked
+ *   GE_NO_SUCH_ROOM if a referenced room does not exist
+ *   INTERNAL_ERROR on invariant failure
+ */
+Status game_engine_enter_portal(GameEngine *eng);
+
 #endif /* GAME_ENGINE_ACCESSORS_H */

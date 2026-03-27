@@ -7,7 +7,7 @@ Provides a Pythonic interface to game operations.
 import ctypes
 from typing import TYPE_CHECKING
 from ..bindings import lib, Status, Direction, Treasure
-from .exceptions import status_to_exception, GameEngineError, ImpassableError
+from .exceptions import status_to_exception, GameEngineError, ImpassableError, NoPortalError
 from .player import Player
 
 
@@ -82,6 +82,12 @@ class GameEngine:
         status = lib.game_engine_move_player(self._eng, direction)
         if status != Status.OK:
             raise status_to_exception(status, f"Failed to move player in direction {direction}")
+
+    def enter_portal(self) -> None:
+        """Enter a portal from the current tile if one is present and unlocked."""
+        status = lib.game_engine_enter_portal(self._eng)
+        if status != Status.OK:
+            raise status_to_exception(status, "Failed to enter portal")
 
     def render_current_room(self) -> str:
         """
@@ -314,7 +320,7 @@ class GameEngine:
             return None
 
         if ui_view.is_portal_key(key):
-            ui_view.message("Stand on and move onto portal tiles to travel between rooms.")
+            self._handle_portal_enter(ui_view)
             return None
 
         direction = ui_view.read_direction(key)
@@ -351,6 +357,18 @@ class GameEngine:
             ui_view.message("That way is blocked.")
         except GameEngineError as exc:
             ui_view.message(f"Move failed: {exc}")
+
+    def _handle_portal_enter(self, ui_view: "GameUI") -> None:
+        """Try entering the portal under the player, if any."""
+        try:
+            self.enter_portal()
+            ui_view.message("You enter the portal.")
+        except NoPortalError:
+            ui_view.message("Stand on a portal tile before using >.")
+        except ImpassableError:
+            ui_view.message("Portal is locked.")
+        except GameEngineError as exc:
+            ui_view.message(f"Portal entry failed: {exc}")
 
     def get_player_room(self) -> int:
         """Return the current room ID via the game engine API."""

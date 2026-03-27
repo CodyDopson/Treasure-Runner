@@ -533,17 +533,11 @@ static void room_render_treasures(const Room *r, const Charset *charset, char *b
     }
 }
 
-static void room_render_portals(const Room *r, char *buffer){
+static void room_render_portals(const Room *r, const Charset *charset, char *buffer){
     for (int i = 0; i < r->portal_count; i++){
         Portal *my_p = &r->portals[i];
         int idx = my_p->y * r->width + my_p->x;
-
-        bool portal_unlocked = true;
-        if (my_p->gated){
-            portal_unlocked = room_switch_is_pressed(r, my_p->required_switch_id);
-        }
-
-        buffer[idx] = portal_unlocked ? 'X' : 'L';
+        buffer[idx] = (char)charset->portal;
     }
 }
 
@@ -634,7 +628,7 @@ Status room_render(const Room *r,const Charset *charset,char *buffer,int buffer_
 
     room_render_base_tiles(r, charset, buffer);
     room_render_treasures(r, charset, buffer);
-    room_render_portals(r, buffer);
+    room_render_portals(r, charset, buffer);
     room_render_switches(r, charset, buffer);
     room_render_pushables(r, charset, buffer);
 

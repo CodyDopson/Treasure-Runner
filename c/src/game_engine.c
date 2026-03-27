@@ -441,7 +441,7 @@ static Status handle_pushable_tile(GameEngine *eng, Room *room, int tile_id, Dir
 /* Helper: handle portal tile interaction */
 static Status handle_portal_tile(GameEngine *eng, Room *current_room, int tile_id, int next_x, int next_y){
     if (!portal_is_traversable(current_room, next_x, next_y, tile_id)){
-        return player_set_position(eng->player, next_x, next_y);
+        return ROOM_IMPASSABLE;
     }
 
     Room *new_room = get_room_by_id(eng->graph, tile_id);
@@ -513,7 +513,7 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
             move_status = handle_pushable_tile(eng, current_room, tile_id, dir, next_x, next_y);
             break;
         case ROOM_TILE_PORTAL:
-            move_status = handle_portal_tile(eng, current_room, tile_id, next_x, next_y);
+            move_status = player_set_position(eng->player, next_x, next_y);
             break;
         case ROOM_TILE_FLOOR:
             move_status = player_set_position(eng->player, next_x, next_y);
@@ -524,6 +524,27 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
 
     return move_status;
 
+}
+
+
+Status game_engine_enter_portal(GameEngine *eng){
+
+    if (eng == NULL || eng->player == NULL || eng->graph == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    Room *current_room = get_room_by_id(eng->graph, eng->player->room_id);
+    if (current_room == NULL){
+        return GE_NO_SUCH_ROOM;
+    }
+
+    int tile_id = -1;
+    RoomTileType tile_type = room_classify_tile(current_room, eng->player->x, eng->player->y, &tile_id);
+    if (tile_type != ROOM_TILE_PORTAL){
+        return ROOM_NO_PORTAL;
+    }
+
+    return handle_portal_tile(eng, current_room, tile_id, eng->player->x, eng->player->y);
 }
 
 
