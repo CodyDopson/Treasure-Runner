@@ -330,6 +330,21 @@ int room_get_treasure_at(const Room *r, int x, int y){
 int room_get_portal_destination(const Room *r, int x, int y){
 
     //Checks if room is NULL
+
+static bool room_has_switch_at(const Room *r, int x, int y){
+    if (r == NULL || r->switches == NULL || r->switch_count <= 0){
+        return false;
+    }
+
+    for (int i = 0; i < r->switch_count; ++i){
+        if (r->switches[i].x == x && r->switches[i].y == y){
+            return true;
+        }
+    }
+
+    return false;
+}
+
     if (r == NULL) {
 
         return -1;
@@ -372,15 +387,7 @@ bool room_is_walkable(const Room *r, int x, int y){
     }
 
 
-    bool has_switch = false;
-    if (r->switches != NULL){
-        for (int i = 0; i < r->switch_count; ++i){
-            if (r->switches[i].x == x && r->switches[i].y == y){
-                has_switch = true;
-                break;
-            }
-        }
-    }
+    bool has_switch = room_has_switch_at(r, x, y);
 
     //Checks if the floor grid hasn't been made yet
     if (r->floor_grid == NULL && !has_switch){
@@ -413,15 +420,7 @@ bool room_is_walkable(const Room *r, int x, int y){
     }
 
     // finally, a tile is not walkable if occupied by any pushable
-    if (r->pushables) {
-        for (int i = 0; i < r->pushable_count; ++i) {
-            if (r->pushables[i].x == x && r->pushables[i].y == y) {
-                return false;
-            }
-        }
-    }
-
-    return true;
+    return !room_has_pushable_at(r, x, y, NULL);
 
 }
 

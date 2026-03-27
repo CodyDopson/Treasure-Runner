@@ -57,7 +57,10 @@ static bool completion_reached(const GameEngine *eng){
     return (total_treasures > 0) && (collected_count >= total_treasures);
 }
 
-static GameEngineAccessorState *g_accessor_state_registry = NULL;
+static GameEngineAccessorState **accessor_state_registry_head(void){
+    static GameEngineAccessorState *registry = NULL;
+    return &registry;
+}
 
 static void free_switch_entries(GameEngineAccessorState *state){
     if (state == NULL){
@@ -70,7 +73,8 @@ static void free_switch_entries(GameEngineAccessorState *state){
 }
 
 static GameEngineAccessorState *get_accessor_state(GameEngine *eng, bool create_if_missing){
-    GameEngineAccessorState *cur = g_accessor_state_registry;
+    GameEngineAccessorState **registry_head = accessor_state_registry_head();
+    GameEngineAccessorState *cur = *registry_head;
     while (cur != NULL){
         if (cur->engine == eng){
             return cur;
@@ -88,19 +92,20 @@ static GameEngineAccessorState *get_accessor_state(GameEngine *eng, bool create_
     }
 
     created->engine = eng;
-    created->next = g_accessor_state_registry;
-    g_accessor_state_registry = created;
+    created->next = *registry_head;
+    *registry_head = created;
     return created;
 }
 
 static void unregister_accessor_state(GameEngine *eng){
+    GameEngineAccessorState **registry_head = accessor_state_registry_head();
     GameEngineAccessorState *prev = NULL;
-    GameEngineAccessorState *cur = g_accessor_state_registry;
+    GameEngineAccessorState *cur = *registry_head;
 
     while (cur != NULL){
         if (cur->engine == eng){
             if (prev == NULL){
-                g_accessor_state_registry = cur->next;
+                *registry_head = cur->next;
             } else {
                 prev->next = cur->next;
             }
