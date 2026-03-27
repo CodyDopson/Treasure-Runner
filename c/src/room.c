@@ -331,20 +331,6 @@ int room_get_portal_destination(const Room *r, int x, int y){
 
     //Checks if room is NULL
 
-static bool room_has_switch_at(const Room *r, int x, int y){
-    if (r == NULL || r->switches == NULL || r->switch_count <= 0){
-        return false;
-    }
-
-    for (int i = 0; i < r->switch_count; ++i){
-        if (r->switches[i].x == x && r->switches[i].y == y){
-            return true;
-        }
-    }
-
-    return false;
-}
-
     if (r == NULL) {
 
         return -1;
@@ -365,6 +351,20 @@ static bool room_has_switch_at(const Room *r, int x, int y){
 
     return -1;//returns -1 if not found
 
+}
+
+static bool room_has_switch_at(const Room *r, int x, int y){
+    if (r == NULL || r->switches == NULL || r->switch_count <= 0){
+        return false;
+    }
+
+    for (int i = 0; i < r->switch_count; ++i){
+        if (r->switches[i].x == x && r->switches[i].y == y){
+            return true;
+        }
+    }
+
+    return false;
 }
 
 
