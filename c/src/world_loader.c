@@ -297,8 +297,8 @@ static void load_charset(Charset *out)
         out->treasure = 'T';
         out->portal = 'P';
         out->pushable = '?';
-        out->switch_off = 'o';
-        out->switch_on = 'O';
+        out->switch_off = 's';
+        out->switch_on = 'S';
     }
 }
 

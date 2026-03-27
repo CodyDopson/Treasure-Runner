@@ -196,8 +196,7 @@ class GameUI:
             "# wall",
             "$ gold",
             "X portal",
-            "s switch off",
-            "S switch on",
+            "= switch",
         ]
         for index, text in enumerate(legend_lines):
             y = self.BOARD_TOP + index

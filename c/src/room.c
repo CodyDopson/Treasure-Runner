@@ -590,18 +590,19 @@ static void room_render_switches(const Room *r, const Charset *charset, char *bu
     for (int i = 0; i < r->switch_count; i++){
         Switch *sw = &r->switches[i];
         int idx = sw->y * r->width + sw->x;
-        bool pressed = room_switch_is_pressed(r, sw->id);
-        if (pressed){
-            buffer[idx] = charset->switch_on;
-        } else {
-            buffer[idx] = charset->switch_off;
-        }
+        buffer[idx] = '=';
     }
 }
 
 static void room_render_pushables(const Room *r, const Charset *charset, char *buffer){
     for (int i = 0; i < r->pushable_count; i++){
         Pushable *my_push = &r->pushables[i];
+        if (my_push->x < 0 || my_push->y < 0 || my_push->x >= r->width || my_push->y >= r->height){
+            continue;
+        }
+        if (room_has_switch_at(r, my_push->x, my_push->y)){
+            continue;
+        }
         int idx = my_push->y * r->width + my_push->x;
         buffer[idx] = (char)charset->pushable;
     }
@@ -629,6 +630,14 @@ RoomTileType room_classify_tile(const Room *r,int x,int y,int *out_id){
     // Pushables take precedence over floor/wall; an occupied tile is not walkable
     if (r->pushables) {
         for (int i = 0; i < r->pushable_count; ++i) {
+            // Skip consumed pushables (those at -1, -1)
+            if (r->pushables[i].x < 0 || r->pushables[i].y < 0){
+                continue;
+            }
+            // Pushables resting on switches are treated as consumed for collisions.
+            if (room_has_switch_at(r, r->pushables[i].x, r->pushables[i].y)){
+                continue;
+            }
             if (r->pushables[i].x == x && r->pushables[i].y == y) {
                 if (out_id != NULL) {
                     *out_id = i;
@@ -674,8 +683,8 @@ Status room_render(const Room *r,const Charset *charset,char *buffer,int buffer_
     room_render_base_tiles(r, charset, buffer);
     room_render_treasures(r, charset, buffer);
     room_render_portals(r, charset, buffer);
-    room_render_switches(r, charset, buffer);
     room_render_pushables(r, charset, buffer);
+    room_render_switches(r, charset, buffer);
 
 
     return OK;
@@ -825,6 +834,14 @@ bool room_has_pushable_at(const Room *r,
     //Runs through all the pushables
     for(int i = 0; i < r->pushable_count; ++i){
 
+        //Skip consumed pushables (those at -1, -1)
+        if (r->pushables[i].x < 0 || r->pushables[i].y < 0){
+            continue;
+        }
+        //Pushables resting on switches should not block player movement.
+        if (room_has_switch_at(r, r->pushables[i].x, r->pushables[i].y)){
+            continue;
+        }
         //Checks if the pushable is at the given x and y
         if (r->pushables[i].x == x && r->pushables[i].y == y){
 
@@ -882,11 +899,15 @@ Status room_try_push(Room *r,
     int newx = p->x + dx;
     int newy = p->y + dy;
 
-    for (int i = 0; i < r->switch_count; ++i){
-        if (r->switches[i].x == newx && r->switches[i].y == newy){
-            p->x = -1;
-            p->y = -1;
-            return OK;
+    // Check if pushing onto a switch - consumes the pushable
+    if (r->switches != NULL && r->switch_count > 0) {
+        for (int i = 0; i < r->switch_count; ++i){
+            if (r->switches[i].x == newx && r->switches[i].y == newy){
+                // Consume the pushable by moving it out of bounds
+                p->x = -1;
+                p->y = -1;
+                return OK;
+            }
         }
     }
 

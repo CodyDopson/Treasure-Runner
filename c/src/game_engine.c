@@ -122,36 +122,16 @@ static bool switch_controls_unlocked_portal(const Room *room, int switch_id){
     return false;
 }
 
-static Status unlock_portal_for_switch(Room *room, int switch_id){
-    if (room == NULL || switch_id < 0){
+static Status unlock_all_portals(Room *room){
+    if (room == NULL){
         return INVALID_ARGUMENT;
     }
 
-    const Switch *sw = NULL;
-    for (int i = 0; i < room->switch_count; ++i){
-        if (room->switches[i].id == switch_id){
-            sw = &room->switches[i];
-            break;
-        }
-    }
-
-    if (sw == NULL){
-        return ROOM_NOT_FOUND;
-    }
-
-    if (sw->portal_id >= 0 && sw->portal_id < room->portal_count){
-        room->portals[sw->portal_id].gated = false;
-        return OK;
-    }
-
     for (int i = 0; i < room->portal_count; ++i){
-        if (room->portals[i].id == sw->portal_id){
-            room->portals[i].gated = false;
-            return OK;
-        }
+        room->portals[i].gated = false;
     }
 
-    return ROOM_NOT_FOUND;
+    return OK;
 }
 
 
@@ -583,7 +563,8 @@ static Status handle_pushable_tile(GameEngine *eng, Room *room, int tile_id, Dir
     }
 
     if (consumes_on_switch){
-        Status mark_status = unlock_portal_for_switch(room, consumed_switch_id);
+        (void)consumed_switch_id;
+        Status mark_status = unlock_all_portals(room);
         if (mark_status != OK){
             return mark_status;
         }
