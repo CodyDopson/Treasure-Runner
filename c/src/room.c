@@ -372,8 +372,18 @@ bool room_is_walkable(const Room *r, int x, int y){
     }
 
 
+    bool has_switch = false;
+    if (r->switches != NULL){
+        for (int i = 0; i < r->switch_count; ++i){
+            if (r->switches[i].x == x && r->switches[i].y == y){
+                has_switch = true;
+                break;
+            }
+        }
+    }
+
     //Checks if the floor grid hasn't been made yet
-    if (r->floor_grid == NULL){
+    if (r->floor_grid == NULL && !has_switch){
 
         if (x == 0 || y == 0 || x == r->width - 1 || y == r->height - 1) {
 
@@ -392,6 +402,10 @@ bool room_is_walkable(const Room *r, int x, int y){
         //return true or false as floor_grid is a bool array
         //each row has width elements so y is the row and x is the elements in that row
         walkable = r->floor_grid[y * r->width + x];
+    }
+
+    if (has_switch){
+        walkable = true;
     }
 
     if (!walkable) {
@@ -836,6 +850,14 @@ Status room_try_push(Room *r,
     //Compute new coordinates
     int newx = p->x + dx;
     int newy = p->y + dy;
+
+    for (int i = 0; i < r->switch_count; ++i){
+        if (r->switches[i].x == newx && r->switches[i].y == newy){
+            p->x = -1;
+            p->y = -1;
+            return OK;
+        }
+    }
 
     // check destination tile - must be walkable floor, can't be treasure/portal/pushable/wall
     int dummy_id = 0;

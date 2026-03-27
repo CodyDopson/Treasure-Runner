@@ -57,6 +57,247 @@ static bool completion_reached(const GameEngine *eng){
     return (total_treasures > 0) && (collected_count >= total_treasures);
 }
 
+static GameEngineAccessorState *g_accessor_state_registry = NULL;
+
+static void free_switch_entries(GameEngineAccessorState *state){
+    if (state == NULL){
+        return;
+    }
+
+    free(state->switch_entries);
+    state->switch_entries = NULL;
+    state->switch_entry_count = 0;
+}
+
+static GameEngineAccessorState *get_accessor_state(GameEngine *eng, bool create_if_missing){
+    GameEngineAccessorState *cur = g_accessor_state_registry;
+    while (cur != NULL){
+        if (cur->engine == eng){
+            return cur;
+        }
+        cur = cur->next;
+    }
+
+    if (!create_if_missing){
+        return NULL;
+    }
+
+    GameEngineAccessorState *created = calloc(1, sizeof(GameEngineAccessorState));
+    if (created == NULL){
+        return NULL;
+    }
+
+    created->engine = eng;
+    created->next = g_accessor_state_registry;
+    g_accessor_state_registry = created;
+    return created;
+}
+
+static void unregister_accessor_state(GameEngine *eng){
+    GameEngineAccessorState *prev = NULL;
+    GameEngineAccessorState *cur = g_accessor_state_registry;
+
+    while (cur != NULL){
+        if (cur->engine == eng){
+            if (prev == NULL){
+                g_accessor_state_registry = cur->next;
+            } else {
+                prev->next = cur->next;
+            }
+            free_switch_entries(cur);
+            free(cur);
+            return;
+        }
+        prev = cur;
+        cur = cur->next;
+    }
+}
+
+static int find_switch_entry_index(const GameEngineAccessorState *state, int room_id, int switch_id){
+    if (state == NULL || state->switch_entries == NULL){
+        return -1;
+    }
+
+    for (int i = 0; i < state->switch_entry_count; ++i){
+        if (state->switch_entries[i].room_id == room_id && state->switch_entries[i].switch_id == switch_id){
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int resolve_room_switch_id(const Room *room, int required_switch_id){
+    if (room == NULL || room->switches == NULL || room->switch_count <= 0 || required_switch_id < 0){
+        return -1;
+    }
+
+    if (required_switch_id < room->switch_count){
+        return room->switches[required_switch_id].id;
+    }
+
+    for (int i = 0; i < room->switch_count; ++i){
+        if (room->switches[i].id == required_switch_id){
+            return room->switches[i].id;
+        }
+    }
+
+    return -1;
+}
+
+static bool room_switch_id_at(const Room *room, int x, int y, int *switch_id_out){
+    if (room == NULL || room->switches == NULL || room->switch_count <= 0){
+        return false;
+    }
+
+    for (int i = 0; i < room->switch_count; ++i){
+        if (room->switches[i].x == x && room->switches[i].y == y){
+            if (switch_id_out != NULL){
+                *switch_id_out = room->switches[i].id;
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static Status ensure_switch_entries_initialized(GameEngine *eng){
+    if (eng == NULL || eng->graph == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    GameEngineAccessorState *state = get_accessor_state(eng, true);
+    if (state == NULL){
+        return NO_MEMORY;
+    }
+
+    if (state->switch_entries != NULL){
+        return OK;
+    }
+
+    const void * const *payloads = NULL;
+    int payload_count = 0;
+    if (graph_get_all_payloads(eng->graph, &payloads, &payload_count) != GRAPH_STATUS_OK){
+        return INTERNAL_ERROR;
+    }
+
+    int total_switches = 0;
+    for (int i = 0; i < payload_count; ++i){
+        const Room *room = (const Room *)payloads[i];
+        total_switches += room->switch_count;
+    }
+
+    if (total_switches <= 0){
+        state->switch_entries = NULL;
+        state->switch_entry_count = 0;
+        return OK;
+    }
+
+    SwitchActivationEntry *entries = calloc((size_t)total_switches, sizeof(SwitchActivationEntry));
+    if (entries == NULL){
+        return NO_MEMORY;
+    }
+
+    int idx = 0;
+    for (int i = 0; i < payload_count; ++i){
+        const Room *room = (const Room *)payloads[i];
+        for (int j = 0; j < room->switch_count; ++j){
+            entries[idx].room_id = room->id;
+            entries[idx].switch_id = room->switches[j].id;
+            entries[idx].activated = false;
+            idx++;
+        }
+    }
+
+    state->switch_entries = entries;
+    state->switch_entry_count = total_switches;
+    return OK;
+}
+
+static bool accessor_switch_activated(const GameEngine *eng, const Room *room, int required_switch_id){
+    if (eng == NULL || room == NULL){
+        return false;
+    }
+
+    int switch_id = resolve_room_switch_id(room, required_switch_id);
+    if (switch_id < 0){
+        return false;
+    }
+
+    GameEngineAccessorState *state = get_accessor_state((GameEngine *)eng, false);
+    if (state == NULL){
+        return false;
+    }
+
+    int idx = find_switch_entry_index(state, room->id, switch_id);
+    if (idx < 0){
+        return false;
+    }
+
+    return state->switch_entries[idx].activated;
+}
+
+static Status accessor_mark_switch_activated(GameEngine *eng, const Room *room, int switch_id){
+    if (eng == NULL || room == NULL || switch_id < 0){
+        return INVALID_ARGUMENT;
+    }
+
+    Status init_status = ensure_switch_entries_initialized(eng);
+    if (init_status != OK){
+        return init_status;
+    }
+
+    GameEngineAccessorState *state = get_accessor_state(eng, false);
+    if (state == NULL){
+        return INTERNAL_ERROR;
+    }
+
+    int idx = find_switch_entry_index(state, room->id, switch_id);
+    if (idx < 0){
+        return ROOM_NOT_FOUND;
+    }
+
+    state->switch_entries[idx].activated = true;
+    return OK;
+}
+
+static void accessor_reset_switches(GameEngine *eng){
+    GameEngineAccessorState *state = get_accessor_state(eng, false);
+    if (state == NULL || state->switch_entries == NULL){
+        return;
+    }
+
+    for (int i = 0; i < state->switch_entry_count; ++i){
+        state->switch_entries[i].activated = false;
+    }
+}
+
+static void apply_activated_switch_overlays(const GameEngine *eng,
+                                            const Room *room,
+                                            const Charset *charset,
+                                            char *flat_buffer,
+                                            int width,
+                                            int height){
+    if (eng == NULL || room == NULL || charset == NULL || flat_buffer == NULL){
+        return;
+    }
+
+    for (int i = 0; i < room->switch_count; ++i){
+        const Switch *sw = &room->switches[i];
+        if (!accessor_switch_activated(eng, room, sw->id)){
+            continue;
+        }
+
+        if (sw->x < 0 || sw->x >= width || sw->y < 0 || sw->y >= height){
+            continue;
+        }
+
+        int idx = sw->y * width + sw->x;
+        flat_buffer[idx] = charset->switch_on;
+    }
+}
+
 
 
 
@@ -148,6 +389,14 @@ Status game_engine_create(const char *config_file_path, GameEngine **engine_out)
 
     }
 
+    Status switch_state_status = ensure_switch_entries_initialized(eng);
+    if (switch_state_status != OK){
+        player_destroy(eng->player);
+        graph_destroy(eng->graph);
+        free(eng);
+        return switch_state_status;
+    }
+
     //Sets engine out to the created engine
     *engine_out = eng;
 
@@ -169,6 +418,8 @@ void game_engine_destroy(GameEngine *eng){
         return;//exits
 
     }
+
+    unregister_accessor_state(eng);
 
     //Destroys player and graph
     player_destroy(eng->player);
@@ -354,8 +605,34 @@ Status game_engine_get_player_collected_treasures(
 }
 
 
+Status game_engine_is_switch_activated(const GameEngine *eng,
+                                       int room_id,
+                                       int switch_id,
+                                       bool *is_activated_out){
+    if (eng == NULL){
+        return INVALID_ARGUMENT;
+    }
+
+    if (is_activated_out == NULL){
+        return NULL_POINTER;
+    }
+
+    if (room_id < 0 || switch_id < 0){
+        return INVALID_ARGUMENT;
+    }
+
+    Room *room = get_room_by_id((Graph *)eng->graph, room_id);
+    if (room == NULL){
+        return GE_NO_SUCH_ROOM;
+    }
+
+    *is_activated_out = accessor_switch_activated(eng, room, switch_id);
+    return OK;
+}
+
+
 /* Helper: check if a gated portal's switch is pressed */
-static bool is_switch_pressed(const Room *room, int switch_id){
+static bool is_switch_pressed(const GameEngine *eng, const Room *room, int switch_id){
     if (room == NULL || room->switches == NULL || room->switch_count <= 0 || switch_id < 0){
         return false;
     }
@@ -376,6 +653,10 @@ static bool is_switch_pressed(const Room *room, int switch_id){
         return false;
     }
 
+    if (accessor_switch_activated(eng, room, switch_id)){
+        return true;
+    }
+
     for (int j = 0; j < room->pushable_count; ++j){
         if (room->pushables[j].x == sw->x && room->pushables[j].y == sw->y){
             return true;
@@ -386,14 +667,14 @@ static bool is_switch_pressed(const Room *room, int switch_id){
 
 
 /* Helper: check if a portal at (x,y) is traversable */
-static bool portal_is_traversable(const Room *room, int x, int y, int target_room_id){
-    if (room == NULL || target_room_id < 0){
+static bool portal_is_traversable(const GameEngine *eng, const Room *room, int x, int y){
+    if (eng == NULL || room == NULL){
         return false;
     }
     for (int i = 0; i < room->portal_count; ++i){
         Portal *p = &room->portals[i];
         if (p->x == x && p->y == y && p->gated){
-            return is_switch_pressed(room, p->required_switch_id);
+            return is_switch_pressed(eng, room, p->required_switch_id);
         }
     }
     return true;
@@ -430,17 +711,45 @@ static Status handle_treasure_tile(
 
 /* Helper: handle pushable tile interaction */
 static Status handle_pushable_tile(GameEngine *eng, Room *room, int tile_id, Direction dir, int next_x, int next_y){
+    if (tile_id < 0 || tile_id >= room->pushable_count){
+        return INVALID_ARGUMENT;
+    }
+
+    int dx = 0;
+    int dy = 0;
+    switch (dir){
+        case DIR_NORTH: dy = -1; break;
+        case DIR_SOUTH: dy = 1; break;
+        case DIR_EAST: dx = 1; break;
+        case DIR_WEST: dx = -1; break;
+        default: return INVALID_ARGUMENT;
+    }
+
+    Pushable *pushable = &room->pushables[tile_id];
+    int push_target_x = pushable->x + dx;
+    int push_target_y = pushable->y + dy;
+    int consumed_switch_id = -1;
+    bool consumes_on_switch = room_switch_id_at(room, push_target_x, push_target_y, &consumed_switch_id);
+
     Status push_status = room_try_push(room, tile_id, dir);
     if (push_status != OK){
         return push_status;
     }
+
+    if (consumes_on_switch){
+        Status mark_status = accessor_mark_switch_activated(eng, room, consumed_switch_id);
+        if (mark_status != OK){
+            return mark_status;
+        }
+    }
+
     return player_set_position(eng->player, next_x, next_y);
 }
 
 
 /* Helper: handle portal tile interaction */
 static Status handle_portal_tile(GameEngine *eng, Room *current_room, int tile_id, int next_x, int next_y){
-    if (!portal_is_traversable(current_room, next_x, next_y, tile_id)){
+    if (!portal_is_traversable(eng, current_room, next_x, next_y)){
         return ROOM_IMPASSABLE;
     }
 
@@ -672,6 +981,8 @@ Status game_engine_reset(GameEngine *eng){
         }
     }
 
+    accessor_reset_switches(eng);
+
     return OK;
 
 }
@@ -723,6 +1034,8 @@ Status game_engine_render_current_room(const GameEngine *eng, char **str_out){
         free(flat_buffer);
         return render_status;
     }
+
+    apply_activated_switch_overlays(eng, room, &eng->charset, flat_buffer, width, height);
 
     // overlay player
     if (eng->player != NULL && eng->player->room_id == room->id) {
@@ -847,6 +1160,8 @@ Status game_engine_render_room(const GameEngine *eng, int room_id, char **str_ou
         return render_status;
 
     }
+
+    apply_activated_switch_overlays(eng, room, &eng->charset, flat_buffer, width, height);
 
 
     // Format with newlines

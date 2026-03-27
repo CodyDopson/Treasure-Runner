@@ -562,6 +562,58 @@ START_TEST(test_room_try_push_blocked){
 }
 END_TEST
 
+START_TEST(test_room_try_push_consumes_on_switch){
+    Pushable *p = malloc(sizeof(Pushable));
+    p->id = 6;
+    p->name = strdup("consume");
+    p->x = 1;
+    p->y = 1;
+    p->initial_x = 1;
+    p->initial_y = 1;
+    room->pushables = p;
+    room->pushable_count = 1;
+
+    Switch *s = malloc(sizeof(Switch));
+    s->id = 1;
+    s->x = 2;
+    s->y = 1;
+    s->portal_id = 0;
+    room->switches = s;
+    room->switch_count = 1;
+
+    ck_assert_int_eq(room_try_push(room, 0, DIR_EAST), OK);
+    ck_assert_int_eq(room->pushables[0].x, -1);
+    ck_assert_int_eq(room->pushables[0].y, -1);
+    ck_assert(room_is_walkable(room, 2, 1) == true);
+
+    free(p->name);
+    free(room->pushables);
+    room->pushables = NULL;
+    room->pushable_count = 0;
+
+    free(room->switches);
+    room->switches = NULL;
+    room->switch_count = 0;
+}
+END_TEST
+
+START_TEST(test_room_is_walkable_switch_not_activating){
+    Switch *s = malloc(sizeof(Switch));
+    s->id = 2;
+    s->x = 0;
+    s->y = 0;
+    s->portal_id = 0;
+    room->switches = s;
+    room->switch_count = 1;
+
+    ck_assert(room_is_walkable(room, 0, 0) == true);
+
+    free(room->switches);
+    room->switches = NULL;
+    room->switch_count = 0;
+}
+END_TEST
+
 
 
 
@@ -618,6 +670,8 @@ Suite *room_suite(void)
 
     tcase_add_test(tc, test_room_try_push_blocked);
     tcase_add_test(tc, test_room_try_push_success);
+    tcase_add_test(tc, test_room_try_push_consumes_on_switch);
+    tcase_add_test(tc, test_room_is_walkable_switch_not_activating);
 
     tcase_add_test(tc, test_room_has_pushable_at);
     tcase_add_test(tc, test_room_is_walkable_pushable);

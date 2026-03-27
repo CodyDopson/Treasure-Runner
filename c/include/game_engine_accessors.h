@@ -16,8 +16,17 @@ typedef struct GameEngineAccessorState {
     int total_treasure_count;              /* Cached world treasure total */
     bool is_game_over;                     /* Terminal-state flag */
     bool is_victory;                       /* Completion-state flag */
+    struct SwitchActivationEntry *switch_entries; /* Per-switch activation table */
+    int switch_entry_count;                /* Number of switch entries */
     struct GameEngineAccessorState *next;  /* Registry linkage */
 } GameEngineAccessorState;
+
+/* Accessor-managed state for consumed-switch activation tracking. */
+typedef struct SwitchActivationEntry {
+    int room_id;
+    int switch_id;
+    bool activated;
+} SwitchActivationEntry;
 
 /* ============================================================
  * Player State Accessors
@@ -188,5 +197,11 @@ Status game_engine_get_player_collected_treasures(const GameEngine *eng,
  *   INTERNAL_ERROR on invariant failure
  */
 Status game_engine_enter_portal(GameEngine *eng);
+
+/* Query whether a switch has been activated by a consumed pushable. */
+Status game_engine_is_switch_activated(const GameEngine *eng,
+                                       int room_id,
+                                       int switch_id,
+                                       bool *is_activated_out);
 
 #endif /* GAME_ENGINE_ACCESSORS_H */
