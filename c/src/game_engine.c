@@ -513,8 +513,6 @@ Status game_engine_move_player(GameEngine *eng, Direction dir){
             move_status = handle_pushable_tile(eng, current_room, tile_id, dir, next_x, next_y);
             break;
         case ROOM_TILE_PORTAL:
-            move_status = player_set_position(eng->player, next_x, next_y);
-            break;
         case ROOM_TILE_FLOOR:
             move_status = player_set_position(eng->player, next_x, next_y);
             break;
