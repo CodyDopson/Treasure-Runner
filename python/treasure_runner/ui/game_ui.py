@@ -370,22 +370,32 @@ def _run_game_session(ui_view: "GameUI", config_path: str, profile_path: str, pr
 
 def _persist_profile_summary(ui_view: "GameUI", profile_path: str, profile: dict, engine: GameEngine | None) -> None:
     """Update and display end-of-session profile summary."""
-    run_treasure_collected, run_rooms_completed = _finalize_engine(engine)
-    updated_profile = update_profile_after_run(profile, run_treasure_collected, run_rooms_completed)
+    run_treasure_collected, run_rooms_completed, run_world_completed = _finalize_engine(engine)
+    updated_profile = update_profile_after_run(
+        profile,
+        run_treasure_collected,
+        run_rooms_completed,
+        run_world_completed,
+    )
     save_profile(profile_path, updated_profile)
     ui_view.show_profile_summary("Session Summary", updated_profile, "Press any key to exit")
 
 
-def _finalize_engine(engine: GameEngine | None) -> tuple[int, int]:
+def _finalize_engine(engine: GameEngine | None) -> tuple[int, int, bool]:
     """Collect final run stats and destroy engine safely."""
     if engine is None:
-        return 0, 0
+        return 0, 0, False
 
     try:
         stats = engine.get_last_run_stats()
-        return int(stats.get("treasure_collected", 0)), int(stats.get("rooms_completed", 0))
+        treasure_collected = int(stats.get("treasure_collected", 0))
+        rooms_completed = int(stats.get("rooms_completed", 0))
+        total_treasures = int(stats.get("total_treasures", 0))
+        is_victory = bool(engine.is_victory())
+        world_completed = is_victory and treasure_collected >= total_treasures
+        return treasure_collected, rooms_completed, world_completed
     except GameEngineError:
-        return 0, 0
+        return 0, 0, False
     finally:
         engine.destroy()
 

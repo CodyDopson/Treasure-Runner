@@ -74,7 +74,12 @@ def load_or_create_profile(profile_path: str, request_player_name: Callable[[], 
     return profile, True
 
 
-def update_profile_after_run(profile: dict, run_treasure_collected: int, run_rooms_completed: int) -> dict:
+def update_profile_after_run(
+    profile: dict,
+    run_treasure_collected: int,
+    run_rooms_completed: int,
+    run_world_completed: bool = False,
+) -> dict:
     """Update profile stats after a run (win, quit, or error)."""
     normalized = normalize_profile(profile)
     normalized["games_played"] = normalized["games_played"] + 1
@@ -83,10 +88,11 @@ def update_profile_after_run(profile: dict, run_treasure_collected: int, run_roo
         run_treasure_collected,
         0,
     )
-    normalized["most_rooms_world_completed"] = max(
-        normalized["most_rooms_world_completed"],
-        run_rooms_completed,
-        0,
-    )
+    if run_world_completed:
+        normalized["most_rooms_world_completed"] = max(
+            normalized["most_rooms_world_completed"],
+            run_rooms_completed,
+            0,
+        )
     normalized["timestamp_last_played"] = _utc_now_iso()
     return normalized
