@@ -590,7 +590,7 @@ static void room_render_switches(const Room *r, const Charset *charset, char *bu
     for (int i = 0; i < r->switch_count; i++){
         Switch *sw = &r->switches[i];
         int idx = sw->y * r->width + sw->x;
-        buffer[idx] = '=';
+        buffer[idx] = (char)charset->switch_off;
     }
 }
 

@@ -390,8 +390,25 @@ def _finalize_engine(engine: GameEngine | None) -> tuple[int, int, bool]:
         treasure_collected = int(stats.get("treasure_collected", 0))
         rooms_completed = int(stats.get("rooms_completed", 0))
         total_treasures = int(stats.get("total_treasures", 0))
-        is_victory = bool(engine.is_victory())
-        world_completed = is_victory and treasure_collected >= total_treasures
+
+        # Prefer explicit run-loop victory flag, then fall back to engine query.
+        world_completed = bool(stats.get("world_completed", False))
+        try:
+            world_completed = world_completed or bool(engine.is_victory())
+        except GameEngineError:
+            pass
+
+        # Keep compatibility with treasure-based completion checks.
+        if total_treasures > 0 and treasure_collected >= total_treasures:
+            world_completed = True
+
+        if world_completed:
+            # A completed world should record at least the world's room count.
+            try:
+                rooms_completed = max(rooms_completed, int(engine.get_room_count()))
+            except GameEngineError:
+                pass
+
         return treasure_collected, rooms_completed, world_completed
     except GameEngineError:
         return 0, 0, False

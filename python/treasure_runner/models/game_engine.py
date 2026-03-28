@@ -47,6 +47,7 @@ class GameEngine:
             "treasure_collected": 0,
             "total_treasures": 0,
             "steps_taken": 0,
+            "world_completed": False,
         }
 
     @property
@@ -234,6 +235,7 @@ class GameEngine:
             "treasure_collected": self.get_player_collected_count(),
             "total_treasures": total_treasures,
             "steps_taken": 0,
+            "world_completed": False,
         }
         return total_rooms, total_treasures, visited_rooms
 
@@ -250,6 +252,16 @@ class GameEngine:
         profile_name = profile_path.rsplit("/", 1)[-1] if profile_path else "-"
         steps_taken = int(self._last_run_stats.get("steps_taken", 0))
         collected_count = self.get_player_collected_count()
+
+        # Finalize run stats at the exact victory point so profile persistence sees
+        # the latest room and treasure totals even when exiting immediately.
+        self._last_run_stats["rooms_completed"] = max(
+            int(self._last_run_stats.get("rooms_completed", 0)),
+            rooms_visited,
+        )
+        self._last_run_stats["treasure_collected"] = collected_count
+        self._last_run_stats["total_treasures"] = total_treasures
+        self._last_run_stats["world_completed"] = True
 
         ui_view.message(
             "Victory! "
@@ -303,6 +315,7 @@ class GameEngine:
             "treasure_collected": int(self._last_run_stats.get("treasure_collected", 0)),
             "total_treasures": int(self._last_run_stats.get("total_treasures", 0)),
             "steps_taken": int(self._last_run_stats.get("steps_taken", 0)),
+            "world_completed": bool(self._last_run_stats.get("world_completed", False)),
         }
 
     def _handle_loop_input(
@@ -336,6 +349,7 @@ class GameEngine:
             visited_rooms.clear()
             visited_rooms.add(self.get_player_room())
             self._last_run_stats["steps_taken"] = 0
+            self._last_run_stats["world_completed"] = False
             ui_view.message("Game reset to initial state.")
         except GameEngineError as exc:
             ui_view.message(f"Reset failed: {exc}")

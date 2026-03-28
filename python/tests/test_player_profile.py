@@ -8,7 +8,7 @@ from treasure_runner.models.player_profile import update_profile_after_run
 class TestPlayerProfileUpdateRules(unittest.TestCase):
     """Validate run-summary profile update behavior."""
 
-    def test_most_rooms_not_updated_when_world_not_completed(self):
+    def test_most_rooms_not_updated_without_win(self):
         profile = {
             "player_name": "Ada",
             "games_played": 5,
@@ -28,7 +28,7 @@ class TestPlayerProfileUpdateRules(unittest.TestCase):
         self.assertEqual(updated["max_treasure_collected"], 10)
         self.assertEqual(updated["most_rooms_world_completed"], 3)
 
-    def test_most_rooms_updates_when_world_completed(self):
+    def test_most_rooms_increments_by_one_when_world_completed(self):
         profile = {
             "player_name": "Ada",
             "games_played": 1,
@@ -46,7 +46,7 @@ class TestPlayerProfileUpdateRules(unittest.TestCase):
 
         self.assertEqual(updated["games_played"], 2)
         self.assertEqual(updated["max_treasure_collected"], 5)
-        self.assertEqual(updated["most_rooms_world_completed"], 6)
+        self.assertEqual(updated["most_rooms_world_completed"], 5)
 
 
 if __name__ == "__main__":

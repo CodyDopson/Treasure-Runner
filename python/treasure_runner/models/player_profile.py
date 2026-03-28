@@ -89,10 +89,9 @@ def update_profile_after_run(
         0,
     )
     if run_world_completed:
-        normalized["most_rooms_world_completed"] = max(
-            normalized["most_rooms_world_completed"],
-            run_rooms_completed,
-            0,
+        # Persist room-progress on wins by advancing exactly one level.
+        normalized["most_rooms_world_completed"] = (
+            normalized["most_rooms_world_completed"] + 1
         )
     normalized["timestamp_last_played"] = _utc_now_iso()
     return normalized
