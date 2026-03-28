@@ -399,7 +399,7 @@ def _finalize_engine(engine: GameEngine | None) -> tuple[int, int, bool]:
             pass
 
         # Keep compatibility with treasure-based completion checks.
-        if total_treasures > 0 and treasure_collected >= total_treasures:
+        if 0 < total_treasures <= treasure_collected:
             world_completed = True
 
         if world_completed:

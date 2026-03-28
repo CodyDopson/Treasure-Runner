@@ -82,6 +82,8 @@ def update_profile_after_run(
 ) -> dict:
     """Update profile stats after a run (win, quit, or error)."""
     normalized = normalize_profile(profile)
+    # Keep compatibility with callers that still pass room totals.
+    run_rooms_completed = max(_to_int(run_rooms_completed, 0), 0)
     normalized["games_played"] = normalized["games_played"] + 1
     normalized["max_treasure_collected"] = max(
         normalized["max_treasure_collected"],
